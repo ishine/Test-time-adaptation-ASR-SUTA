@@ -3,7 +3,12 @@ import torch
 import pandas as pd
 from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
 from torch import nn
-from jiwer import wer
+import jiwer
+
+
+def wer(a, b):
+    return jiwer.wer(a, b, reference_transform=jiwer.wer_standardize, hypothesis_transform=jiwer.wer_standardize)
+
 
 def setup_optimizer(params, opt_name='AdamW', lr=1e-4, beta=0.9, weight_decay=0., scheduler=None, step_size=1, gamma=0.7):
     opt = getattr(torch.optim, opt_name)
@@ -77,7 +82,7 @@ def collect_params(model, bias_only=False, train_feature=False, train_all=False,
 
     
     for nm, m in model.named_modules():
-        print(nm)
+        # print(nm)
         if train_LN: 
             if isinstance(m, nn.LayerNorm):
                 for np, p in m.named_parameters():
@@ -319,7 +324,7 @@ if __name__ == '__main__':
     for batch in dataset:
         lens, wavs, texts, files = batch
         
-        inputs = processor(wavs, return_tensors="pt", padding="longest")
+        inputs = processor(wavs, sampling_rate=SAMPLE_RATE, return_tensors="pt", padding="longest")
         input_values = inputs.input_values.cuda()
         duration = input_values.shape[1] / SAMPLE_RATE
         durations.append(duration)

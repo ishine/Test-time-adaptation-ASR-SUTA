@@ -51,6 +51,8 @@ def create_dataset(split, name, path, batch_size=1):
     # Recognize corpus
     if name.lower() == "librispeech":
         from corpus.librispeech import LibriDataset as Dataset
+    if name.lower() == "libritts":
+        from corpus.libritts import LibriTTSDataset as Dataset
     elif name.lower() == "chime":
         from corpus.CHiME import CHiMEDataset as Dataset
     elif name.lower() == "ted":
