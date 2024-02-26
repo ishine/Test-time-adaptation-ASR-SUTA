@@ -17,18 +17,22 @@ def infer(system: SUTASystem, instances) -> List[str]:
     res = []
     for instance in instances:
         data_batch = [(instance.wav_path, instance.text)]
-        lens, wavs, texts, files = collect_audio_batch(data_batch, extra_noise=0.005)
-        system.inference(wavs)
+        lens, wavs, texts, files = collect_audio_batch(data_batch, extra_noise=0)
         trans = system.inference(wavs)
         res.extend(trans)
     return res
 
 
-def adapt(system: SUTASystem, instances) -> None:
+def adapt(system: SUTASystem, instances, args) -> None:
     for instance in instances:
         data_batch = [(instance.wav_path, instance.text)]
-        lens, wavs, texts, files = collect_audio_batch(data_batch, extra_noise=0.005)
-        system.adapt(wavs)
+        lens, wavs, texts, files = collect_audio_batch(data_batch, extra_noise=0)
+        system.adapt(wavs, 
+            em_coef=args.em_coef,
+            reweight=args.reweight,
+            temp=args.temp,
+            not_blank=args.non_blank
+        )
 
 
 def main(args):
@@ -57,7 +61,7 @@ def main(args):
         instance = random.sample(spk2instances[src], 1)[0]
         for _ in range(10):
             instances.append(instance)
-        adapt(system, instances)
+        adapt(system, instances, args)
         for tgt in tqdm(spks):
             gt = [instance.text for instance in spk2instances[tgt]]
             preds = infer(system, spk2instances[tgt])
@@ -65,7 +69,7 @@ def main(args):
         system.load_snapshot("init")
         # break
     # print(lines)
-    with open("spk_results-n.txt", "w") as f:
+    with open("spk_results-fixcnn.txt", "w") as f:
         for line in lines:
             f.write(f"{line[0]}|{line[1]}|{line[2] * 100:.2f}\n")
 
@@ -97,10 +101,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
     # fix to the best setting
     args.non_blank = True
-    args.train_feature = True
+    args.train_feature = False
     args.reweight = True
     args.lr = 2e-5
     args.em_coef = 0.3
+    args.dataset_dir = "/mnt/d/Data/LibriTTS"
 
     seed_everything(666)
     main(args)

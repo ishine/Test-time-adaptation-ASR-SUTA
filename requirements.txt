@@ -4,3 +4,4 @@ pandas
 jiwer
 torchaudio
 soundfile
+matplotlib

@@ -6,6 +6,8 @@ import jiwer
 
 
 def wer(a, b):
+    a = jiwer.RemovePunctuation()(a)
+    b = jiwer.RemovePunctuation()(b)
     return jiwer.wer(a, b, reference_transform=jiwer.wer_standardize, hypothesis_transform=jiwer.wer_standardize)
 
 

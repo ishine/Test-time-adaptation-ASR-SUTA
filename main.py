@@ -33,18 +33,20 @@ def softmax_entropy(x, dim=2):
     return -(x.softmax(dim) * x.log_softmax(dim)).sum(dim)
 
 def mcc_loss(x, reweight=False, dim=2, class_num=32):
-    p = x.softmax(dim) # (1, L, D)
-    p = p.squeeze(0) # (L, D)
-    if reweight: # (1, L, D) * (L, 1) 
-        target_entropy_weight = softmax_entropy(x, dim=2).detach().squeeze(0) # instance-wise entropy (1, L, D)
-        target_entropy_weight = 1 + torch.exp(-target_entropy_weight) # (1, L)
+    p = x.softmax(dim) # (B, L, D)
+    if reweight: # (B, L, D) * (B, L, 1) 
+        target_entropy_weight = softmax_entropy(x, dim=2).detach() # instance-wise entropy (B, L, D)
+        target_entropy_weight = 1 + torch.exp(-target_entropy_weight) # (B, L)
         target_entropy_weight = x.shape[1] * target_entropy_weight / torch.sum(target_entropy_weight)
-        cov_matrix_t = p.mul(target_entropy_weight.view(-1, 1)).transpose(1, 0).mm(p)
+        cov_matrix_t = torch.matmul(p.mul(target_entropy_weight.unsqueeze(-1)).transpose(2, 1), p)
     else:    
-        cov_matrix_t = p.transpose(1, 0).mm(p) # (D, L) * (L, D) -> (D, D)
+        cov_matrix_t = p.transpose(2, 1).mm(p) # (B, D, L) * (B, L, D) -> (B, D, D)
 
-    cov_matrix_t = cov_matrix_t / torch.sum(cov_matrix_t, dim=1)
-    mcc_loss = (torch.sum(cov_matrix_t) - torch.trace(cov_matrix_t)) / class_num
+    cov_matrix_t = cov_matrix_t / torch.sum(cov_matrix_t, dim=-1, keepdim=True)
+    tr = 0
+    for i in range(x.shape[0]):
+        tr += torch.trace(cov_matrix_t[i])
+    mcc_loss = (torch.sum(cov_matrix_t) - tr) / class_num / x.shape[0]
    
     return mcc_loss
 
