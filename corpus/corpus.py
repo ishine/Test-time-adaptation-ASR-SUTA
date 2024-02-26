@@ -11,12 +11,12 @@ from scipy.io import wavfile
 
 class SutaCorpus(object):
     def __init__(self) -> None:
-        self.root = "/mnt/d/Projects/tts_api/suta"
+        self.root = "/mnt/d/Projects/tts_api/suta"  # change to local path
         with open(f"{self.root}/metadata.json", 'r') as f:
             self.metadata = json.load(f)
 
         # load noise
-        self.musan_root = "/mnt/d/Data/musan"
+        self.musan_root = "/mnt/d/Data/musan"  # change to local path
         background_noise_filename = [
             "noise-free-sound-0232",
             "noise-free-sound-0840",

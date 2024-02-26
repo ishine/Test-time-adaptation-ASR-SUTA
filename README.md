@@ -12,6 +12,8 @@ Our proposed SUTA has below advantages:
 ```
 pip install -r requirements.txt
 ```
+Local install (pip install -e) [another repo](https://github.com/hhhaaahhhaa/dlhlp-lib.git).
+
 ### Data Preparation
 Currently, our code only supports [Librispeech](https://www.openslr.org/12)/[CHiME-3](https://catalog.ldc.upenn.edu/LDC2017S24)/[Common voice En](https://tinyurl.com/cvjune2020)/[TED-LIUM 3](https://www.openslr.org/51/)
 You have to download datasets by your own.
@@ -30,13 +32,18 @@ bash scripts/{dataset_name: LS/CH/CV/TD}.sh
 | Baseline TTA - SDPL | 8.3  | 13.1     | 23.1    | 30.4 | 36.3 | 12.8 |
 | Proposed TTA - SUTA | 7.3  | 10.9     | 16.7    | 25.0 | 31.2 | 11.9 |
 
+### Benchmark
+View all definition of tasks and strategies in ```benchmark/load.py```. Run the following command for example
+```python
+python run_benchmark.py -s csuta -t task1
+```
 ### TODO 
 * Support auto-regressive model 
 * More speech processing tasks beyond speech recognition
 
 ### Contact 
 * Guan-Ting Lin [email] daniel094144@gmail.com
-
+* Wei-Ping Huang [email] thomas1232121@gmail.com
 ### Citation
 ```
 @article{lin2022listen,
