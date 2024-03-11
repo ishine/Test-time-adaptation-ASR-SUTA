@@ -41,8 +41,18 @@ class SUTASystem(object):
     def reset_adapt_counter(self):
         self.adapt_count = 0
     
+    def l2_loss(self):
+        l2_loss = 0.0
+        assert "init" in self.history
+        orig_state_dict = self.history["init"][0]
+
+        for name, param in self.model.named_parameters():
+            if param.requires_grad:
+                l2_loss += torch.sum((param - orig_state_dict[name]) ** 2)
+        return l2_loss
+
     def adapt(self, wavs, em_coef=0.9, reweight=False, temp=1., not_blank=True, 
-                        div_coef=0, repeat_inference=True, skip_short_thd=None):
+                        div_coef=0, l2_coef=0, repeat_inference=True, skip_short_thd=None):
         """Forward and adapt model on batch of data.
 
         Measure entropy of the model prediction, take gradients, and update params.
@@ -75,10 +85,14 @@ class SUTASystem(object):
 
         if div_coef > 0: 
             d_loss = div_loss(outputs, not_blank) 
-            loss += d_loss * div_coef 
+            loss += d_loss * div_coef
+
+        if l2_coef > 0: 
+            l2_loss = self.l2_loss() * l2_coef
+            loss += l2_loss
 
         loss.backward()
-        # print(e_loss, c_loss)
+        # print(e_loss.item(), c_loss.item(), l2_loss.item())
         # print(predicted_ids)
         self.optimizer.step()
         if self.scheduler is not None: 
@@ -118,9 +132,14 @@ class SUTASystem(object):
             c_loss = mcc_loss(outputs / temp, reweight)
             loss += c_loss * (1 - em_coef)
 
+        # l2_loss = self.l2_loss() * self.config["l2_coef_crit"]
+        # loss += l2_loss
+        # print(l2_loss.item())
+
         return {
             "e_loss": e_loss.item(),
             "c_loss": c_loss.item(),
+            # "l2_loss": l2_loss.item(),
             "total_loss": loss.item()
         }
 
