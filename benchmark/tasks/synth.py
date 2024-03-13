@@ -1,12 +1,12 @@
 from torch.utils.data import Dataset
 import random
 
-from corpus.corpus import SutaCorpus
+from corpus.corpus import SynthCorpus
 
 
 class RandomSequence(Dataset):
     def __init__(self) -> None:
-        self.corpus = SutaCorpus()
+        self.corpus = SynthCorpus()
         self.idx_seq = list(range(len(self.corpus)))
         self.task_boundaries = []
         random.shuffle(self.idx_seq)
@@ -20,7 +20,7 @@ class RandomSequence(Dataset):
 
 class ContentSequence(Dataset):
     def __init__(self) -> None:
-        self.corpus = SutaCorpus()
+        self.corpus = SynthCorpus()
         self.idx_seq = []
         self.task_boundaries = []
         for i in range(10):
@@ -38,7 +38,7 @@ class ContentSequence(Dataset):
 
 class SpeakerSequence(Dataset):
     def __init__(self) -> None:
-        self.corpus = SutaCorpus()
+        self.corpus = SynthCorpus()
         self.idx_seq = []
         self.task_boundaries = []
         for j in range(10):
@@ -56,7 +56,7 @@ class SpeakerSequence(Dataset):
 
 class NoiseSequence(Dataset):
     def __init__(self) -> None:
-        self.corpus = SutaCorpus()
+        self.corpus = SynthCorpus()
         self.idx_seq = []
         self.task_boundaries = []
         for k in range(10):

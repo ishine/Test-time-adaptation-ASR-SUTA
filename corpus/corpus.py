@@ -10,15 +10,17 @@ import re
 from builtins import str as unicode
 from scipy.io import wavfile
 
+from . import Define
 
-class SutaCorpus(object):
+
+class SynthCorpus(object):
     def __init__(self) -> None:
-        self.root = "/mnt/d/Projects/tts_api/suta"  # change to local path
+        self.root = Define.SYNTH 
         with open(f"{self.root}/metadata.json", 'r') as f:
             self.metadata = json.load(f)
 
         # load noise
-        self.musan_root = "/mnt/d/Data/musan"  # change to local path
+        self.musan_root = Define.MUSAN 
         background_noise_filename = [
             "noise-free-sound-0232",
             "noise-free-sound-0840",
@@ -162,7 +164,7 @@ def preprocess_text(text):
 
 class ESDCorpus(object):
     def __init__(self, extra_noise=0.0) -> None:
-        self.root = "/mnt/d/Data/ESD_suta"  # change to local path
+        self.root = Define.ESD 
         with open(f"{self.root}/map_dict.json", 'r') as f:
             self.metadata = json.load(f)
         
@@ -223,7 +225,7 @@ class ESDCorpus(object):
 
 class L2ArcticCorpus(object):
     def __init__(self) -> None:
-        self.root = "/mnt/d/Data/l2arctic"  # change to local path
+        self.root = Define.L2ARCTIC
         self.n_per_spk = 50
         self._init_info()
 
@@ -281,8 +283,8 @@ class L2ArcticCorpus(object):
 
 class NoisyL2ArcticCorpus(object):
     def __init__(self) -> None:
-        self.root = "/mnt/d/Data/l2arctic"  # change to local path
-        self.musan_root = "/mnt/d/Data/musan"  # change to local path
+        self.root = Define.L2ARCTIC 
+        self.musan_root = Define.MUSAN 
         self.n_per_spk = 50
         self._init_info()
 
@@ -352,7 +354,7 @@ class NoisyL2ArcticCorpus(object):
 class CHIMECorpus(object):
     def __init__(self, ascending=False):
         # Setup
-        path = "/mnt/d/Data/ChiME3"  # change to local path
+        path = Define.CHIME 
         self.path = path
         
         split = ['et05_bus_real', 'et05_bus_simu', 'et05_caf_real', 'et05_caf_simu', 'et05_ped_simu', 'et05_str_real', 'et05_str_simu']
