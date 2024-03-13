@@ -2,7 +2,7 @@ from torch.utils.data import Dataset
 import yaml
 from tqdm import tqdm
 
-from systems.suta1 import SUTASystem
+from systems.suta import SUTASystem
 from utils.tool import wer
 
 
@@ -50,7 +50,7 @@ class SUTAStrategy(BaseStrategy):
                 reweight=self.config["reweight"],
                 temp=self.config["temp"],
                 not_blank=self.config["non_blank"],
-                l2_coef=0  # SUTA default no regularization
+                l2_coef=self.config["l2_coef"],
             )
             if not res:
                 break
@@ -84,8 +84,6 @@ class SUTAStrategy(BaseStrategy):
                 not_blank=self.config["non_blank"]
             )
             losses.append(loss)
-
-            self.system.load_snapshot("init")
         
         return {
             "wers": errs,

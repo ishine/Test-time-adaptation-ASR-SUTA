@@ -2,7 +2,7 @@ from torch.utils.data import Dataset
 from tqdm import tqdm
 
 from .basic import BaseStrategy
-from systems.suta1 import SUTASystem
+from systems.suta import SUTASystem
 from utils.tool import wer
 
 
@@ -55,8 +55,6 @@ class CSUTAResetStrategy(BaseStrategy):
                 not_blank=self.config["non_blank"]
             )
             losses.append(loss)
-
-            self.system.load_snapshot("init")
         
         return {
             "wers": errs,

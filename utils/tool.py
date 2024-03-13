@@ -3,7 +3,7 @@ import torch
 import random
 import jiwer
 import matplotlib
-matplotlib.use("Agg")
+# matplotlib.use("Agg")
 import matplotlib.pylab as plt
 
 

@@ -352,7 +352,7 @@ class NoisyL2ArcticCorpus(object):
 class CHIMECorpus(object):
     def __init__(self, ascending=False):
         # Setup
-        path = "/mnt/d/Data/ChiME3"
+        path = "/mnt/d/Data/ChiME3"  # change to local path
         self.path = path
         
         split = ['et05_bus_real', 'et05_bus_simu', 'et05_caf_real', 'et05_caf_simu', 'et05_ped_simu', 'et05_str_real', 'et05_str_simu']

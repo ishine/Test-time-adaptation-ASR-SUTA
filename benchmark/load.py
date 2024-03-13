@@ -1,47 +1,49 @@
 from torch.utils.data import Dataset
 from typing import Type
 
-from .tasks import chime, esd, l2arctic, synth
-from .basic import BaseStrategy, NoStrategy, SUTAStrategy, CSUTAStrategy
-from .loss_based import *
-from . import dynamic
-from . import other
+from .tasks import (
+    chime, esd, l2arctic, synth, librispeech
+)
+from .strategies import (
+    basic, dynamic, other
+)
 
 
 STRATEGY = {
-    "none": NoStrategy,
-    "suta": SUTAStrategy,
-    "csuta": CSUTAStrategy,
+    "none": basic.NoStrategy,
+    "suta": basic.SUTAStrategy,
+    "csuta": basic.CSUTAStrategy,
 
     "dsuta": dynamic.DSUTAStrategy,
     "dcsuta": dynamic.DCSUTAStrategy,
     "trans": dynamic.TranscriptionStrategy,
-    
+
     "csuta*": other.CSUTAResetStrategy,
     "multiexpert": other.MultiExpertStrategy,
-    "multiexpert-trans": other.MultiExpertTransStrategy,
+    "multiexpert_trans": other.MultiExpertTransStrategy,
     "advanced": other.AdvancedStrategy,
 }
 
 
 TASK = {
-    "task1": synth.RandomSequence,
-    "task2": synth.ContentSequence,
-    "task3": synth.SpeakerSequence,
-    "task4": synth.NoiseSequence,
-    "task5": esd.RandomSequence,
-    "task6": esd.SpeakerSequence,
-    "task7": esd.EmotionSequence,
-    "task8": esd.ContentSequence,
-    "task9": l2arctic.RandomSequence,
-    "task10": l2arctic.AccentSequence,
-    "task11": l2arctic.ContentSequence,
-    "task12": l2arctic.SpeakerSequence,
-    "task13": chime.RandomSequence
+    "synth_random": synth.RandomSequence,
+    "synth_content": synth.ContentSequence,
+    "synth_speaker": synth.SpeakerSequence,
+    "synth_noise": synth.NoiseSequence,
+    "esd_random": esd.RandomSequence,
+    "esd_speaker": esd.SpeakerSequence,
+    "esd_emotion": esd.EmotionSequence,
+    "esd_content": esd.ContentSequence,
+    "l2arctic_random": l2arctic.RandomSequence,
+    "l2arctic_accent": l2arctic.AccentSequence,
+    "l2arctic_content": l2arctic.ContentSequence,
+    "l2arctic_speaker": l2arctic.SpeakerSequence,
+    "chime_random": chime.RandomSequence,
+    "librispeech_random": librispeech.RandomSequence,
 }
 
 
-def get_strategy(name) -> Type[BaseStrategy]:
+def get_strategy(name) -> Type[basic.BaseStrategy]:
     return STRATEGY[name]
 
 
