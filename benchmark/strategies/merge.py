@@ -6,26 +6,41 @@ from systems.suta import SUTASystem
 from utils.tool import wer
 from .basic import BaseStrategy
 
-from dlhlp_lib.utils.data_structure import Queue
 
-
-class BaseMergeStrategy(BaseStrategy):
+class EMAStrategy(BaseStrategy):
     def __init__(self, config) -> None:
         self.config = config
         self.system = SUTASystem(config)
 
-        self.queue = Queue(max_size=5)
+        self.ema_task_vector = None
+        self.alpha = 0.999
 
     def _update_merged_model(self):
-        # get_task_vector
-        # merge_task_vector
-        # apply_task_vector
-        pass
-    def fix_adapt(self, sample):
-        self.queue.update(sample)
+        model_state = self.system.model.state_dict()
+        origin_model_state = self.system.history["init"][0]
+        task_vector = {
+            name: model_state[name] - origin_model_state[name]
+        for name in model_state}
+        print("get tv")
+
+        if self.ema_task_vector is None:
+            assert "merged" not in self.system.history
+            for name in model_state:
+                self.ema_task_vector[name] = (1 - self.alpha) * task_vector[name]
+        else:
+            for name in model_state:
+                self.ema_task_vector[name] = self.alpha * self.ema_task_vector[name] + (1 - self.alpha) * task_vector[name]
+        
+        merged_model_state = {
+            name: origin_model_state[name] + self.ema_task_vector[name]
+        for name in model_state}
+        self.system.history["merged"] = (merged_model_state, None, None)
+        print("merge tv")
+    
+    def adapt(self, sample):
         for _ in range(self.config["steps"]):
             res = self.system.adapt(
-                [s["wav"] for s in self.queue.data],
+                [sample["wav"]],
                 em_coef=self.config["em_coef"],
                 reweight=self.config["reweight"],
                 temp=self.config["temp"],
@@ -37,11 +52,13 @@ class BaseMergeStrategy(BaseStrategy):
         return res
     
     def _update(self, sample):
-        self.system.load_snapshot("init")
-        res = self.fix_adapt(sample)
+        start_point = "init" if self.ema_task_vector is None else "merged"
+        self.system.load_snapshot(start_point)
+        res = self.adapt(sample)
         if not res:  # suta failed
             print("oh no")
-            self.system.load_snapshot("init")
+            self.system.load_snapshot(start_point)
+        self._update_merged_model()
     
     def run(self, ds: Dataset):
         n_words = []
@@ -64,6 +81,7 @@ class BaseMergeStrategy(BaseStrategy):
                 not_blank=self.config["non_blank"]
             )
             losses.append(loss)
+            input()
         
         return {
             "wers": errs,

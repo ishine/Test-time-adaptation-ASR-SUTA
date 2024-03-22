@@ -1,4 +1,4 @@
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 import yaml
 from tqdm import tqdm
 
@@ -41,8 +41,15 @@ class SUTAStrategy(BaseStrategy):
     def run(self, ds: Dataset):
         n_words = []
         errs, losses = [], []
+        dataloader = DataLoader(
+            ds,
+            batch_size=1,
+            num_workers=4,
+            collate_fn=lambda x: x
+        )
         self.system.snapshot("init")
-        for sample in tqdm(ds):
+        for sample in tqdm(dataloader):
+            sample = sample[0]
             n_words.append(len(sample["text"].split(" ")))
 
             # update
