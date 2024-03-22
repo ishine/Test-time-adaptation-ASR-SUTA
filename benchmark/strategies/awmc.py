@@ -7,10 +7,12 @@ from utils.tool import wer
 from .basic import BaseStrategy
 
 
-class EMAStrategy(BaseStrategy):
+class AWMCStrategy(BaseStrategy):
     def __init__(self, config) -> None:
         self.config = config
-        self.system = SUTASystem(config)
+        self.anchor = SUTASystem(config)
+        self.system = SUTASystem(config)  # chaser
+        self.leader = SUTASystem(config)
 
         self.ema_task_vector = None
         self.alpha = 0.999
@@ -24,7 +26,6 @@ class EMAStrategy(BaseStrategy):
         # print("get tv")
 
         if self.ema_task_vector is None:
-            assert "merged" not in self.system.history
             self.ema_task_vector = {}
             for name in model_state:
                 self.ema_task_vector[name] = (1 - self.alpha) * task_vector[name]
@@ -35,36 +36,36 @@ class EMAStrategy(BaseStrategy):
         merged_model_state = {
             name: origin_model_state[name] + self.ema_task_vector[name]
         for name in model_state}
-        self.system.history["merged"] = (merged_model_state, None, None)
+        self.leader.history["merged"] = (merged_model_state, None, None)
+        self.leader.load_snapshot("merged")
         # print("merge tv")
     
-    def adapt(self, sample):
+    def adapt(self, sample):  # AWMC use PL instead of unsupervised objectives
+        anchor_pl_target = self.anchor.inference([sample["wav"]])[0]
+        leader_pl_target = self.leader.inference([sample["wav"]])[0]
         for _ in range(self.config["steps"]):
-            res = self.system.adapt(
-                [sample["wav"]],
-                em_coef=self.config["em_coef"],
-                reweight=self.config["reweight"],
-                temp=self.config["temp"],
-                not_blank=self.config["non_blank"],
-                l2_coef=self.config["l2_coef"],
+            res = self.system.pl_adapt(
+                [sample["wav"], sample["wav"]],
+                transcriptions=[anchor_pl_target, leader_pl_target],
             )
             if not res:
                 break
         return res
     
     def _update(self, sample):
-        start_point = "init" if self.ema_task_vector is None else "merged"
-        self.system.load_snapshot(start_point)
+        self.system.snapshot("checkpoint")
         res = self.adapt(sample)
         if not res:  # suta failed
             print("oh no")
-            self.system.load_snapshot(start_point)
+            self.system.snapshot("checkpoint")
         self._update_merged_model()
     
     def run(self, ds: Dataset):
         n_words = []
         errs, losses = [], []
         self.system.snapshot("init")
+        self.leader.snapshot("init")
+        self.leader.snapshot("merged")
         for sample in tqdm(ds):
             n_words.append(len(sample["text"].split(" ")))
 

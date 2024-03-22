@@ -5,7 +5,7 @@ from .tasks import (
     chime, esd, l2arctic, synth, librispeech
 )
 from .strategies import (
-    basic, dynamic, other, batch, merge
+    basic, dynamic, other, batch, merge, awmc
 )
 
 
@@ -26,6 +26,8 @@ STRATEGY = {
     "suta-batch": batch.SUTAStrategy,
     "csuta-batch": batch.CSUTAStrategy,
     "ema": merge.EMAStrategy,
+
+    "awmc": awmc.AWMCStrategy,
 }
 
 

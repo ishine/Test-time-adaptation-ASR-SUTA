@@ -5,3 +5,4 @@ jiwer
 torchaudio
 soundfile
 matplotlib
+datasets

@@ -1,10 +1,12 @@
-# SUTA load from config
+import numpy as np
 import torch
 import torch.nn as nn
 from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
 from copy import deepcopy
+import json
 
 from .loss import softmax_entropy, mcc_loss, div_loss
+from utils.tool import pad_1D
 
 
 class SUTASystem(object):
@@ -25,6 +27,11 @@ class SUTASystem(object):
             self.build_optimized_model(),
             config["opt"], config["lr"], scheduler=config["scheduler"]
         )
+
+        # for PL loss
+        f = open('vocab.json')
+        self.vocab = json.load(f)
+        self.ctc_loss = nn.CTCLoss(blank=0, zero_infinity=False)
 
     def build_optimized_model(self):
         self.model.requires_grad_(False)
@@ -50,6 +57,25 @@ class SUTASystem(object):
             if param.requires_grad:
                 l2_loss += torch.sum((param - orig_state_dict[name]) ** 2)
         return l2_loss
+
+    def pseudo_labeling_loss(self, outputs, transcriptions):
+        targets = []
+        for transcription in transcriptions:
+            target = []
+            for s in transcription:
+                if s == ' ':
+                    s = '|'
+                target.append(self.vocab[s])
+            targets.append(np.array(target))
+        tgt_lens = [len(t) for t in targets]
+        # print(targets)
+        targets = torch.from_numpy(pad_1D(targets)).int()
+
+        logp = outputs.log_softmax(2).transpose(1, 0) # L,N,D
+        input_len = [logp.shape[0]] * len(tgt_lens)
+        loss = self.ctc_loss(logp, targets, torch.tensor(input_len), torch.tensor(tgt_lens))
+        
+        return loss
 
     def adapt(self, wavs, em_coef=0.9, reweight=False, temp=1., not_blank=True, 
                         div_coef=0, l2_coef=0, repeat_inference=True, skip_short_thd=None, record={}):
@@ -105,6 +131,27 @@ class SUTASystem(object):
             self.scheduler.step()
         self.model.zero_grad()
         if torch.isnan(e_loss):
+            return False
+        return True
+
+    def pl_adapt(self, wavs, transcriptions: list[str]):
+        # forward
+        self.adapt_count += 1
+        x = self._wav_to_model_input(wavs)
+        outputs = self.model(x).logits
+
+        # adapt
+        loss = self.pseudo_labeling_loss(outputs, transcriptions)
+
+        loss.backward()
+        # grad = cal_grad(model)
+        # print(grad)
+        self.optimizer.step()
+        if self.scheduler is not None: 
+            self.scheduler.step()
+        self.model.zero_grad()
+
+        if torch.isnan(loss):
             return False
         return True
 
@@ -169,7 +216,7 @@ class SUTASystem(object):
         
         # reset optimizer if None
         if optimizer_state is None:
-            optimizer_state = self.history[key][1]
+            optimizer_state = self.history["init"][1]
         optimizer_state = deepcopy(optimizer_state)
         self.optimizer.load_state_dict(optimizer_state)
         if scheduler_state is not None:
