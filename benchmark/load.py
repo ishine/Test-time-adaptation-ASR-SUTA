@@ -5,7 +5,7 @@ from .tasks import (
     chime, esd, l2arctic, synth, librispeech
 )
 from .strategies import (
-    basic, dynamic, other
+    basic, dynamic, other, batch
 )
 
 
@@ -22,6 +22,9 @@ STRATEGY = {
     "multiexpert": other.MultiExpertStrategy,
     "multiexpert_trans": other.MultiExpertTransStrategy,
     "advanced": other.AdvancedStrategy,
+
+    "suta-batch": batch.SUTAStrategy,
+    "csuta-batch": batch.CSUTAStrategy,
 }
 
 

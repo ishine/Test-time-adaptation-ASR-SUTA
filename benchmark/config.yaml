@@ -4,7 +4,7 @@ opt: AdamW
 lr: 0.00002
 scheduler: null
 
-steps: 10
+steps: 30
 em_coef: 0.3
 div_coef: 0
 non_blank: True

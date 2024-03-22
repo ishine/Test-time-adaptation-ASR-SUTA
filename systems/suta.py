@@ -165,10 +165,14 @@ class SUTASystem(object):
         # print(f"Reset. (key: {key})")
         model_state, optimizer_state, scheduler_state = self.history[key]
         model_state = deepcopy(model_state)
-        optimizer_state = deepcopy(optimizer_state)
         self.model.load_state_dict(model_state, strict=True)
+        
+        # reset optimizer if None
+        if optimizer_state is None:
+            optimizer_state = self.history[key][1]
+        optimizer_state = deepcopy(optimizer_state)
         self.optimizer.load_state_dict(optimizer_state)
-        if self.scheduler is not None:
+        if scheduler_state is not None:
             scheduler_state = deepcopy(scheduler_state)
             self.scheduler.load_state_dict(scheduler_state)
 
