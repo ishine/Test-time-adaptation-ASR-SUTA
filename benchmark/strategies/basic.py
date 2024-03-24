@@ -22,15 +22,18 @@ class NoStrategy(BaseStrategy):
     def run(self, ds: Dataset):
         n_words = []
         errs = []
+        transcriptions = []
         for sample in tqdm(ds):
             n_words.append(len(sample["text"].split(" ")))
             trans = self.system.inference([sample["wav"]])
             err = wer(sample["text"], trans[0])
             errs.append(err)
+            transcriptions.append((sample["text"], trans[0]))
         
         return {
             "wers": errs,
-            "n_words": n_words
+            "n_words": n_words,
+            "transcriptions": transcriptions,
         }
     
     def get_adapt_count(self):
@@ -66,6 +69,7 @@ class SUTAStrategy(BaseStrategy):
     def run(self, ds: Dataset):
         n_words = []
         errs, losses = [], []
+        transcriptions = []
         self.system.snapshot("init")
         for sample in tqdm(ds):
             n_words.append(len(sample["text"].split(" ")))
@@ -76,6 +80,7 @@ class SUTAStrategy(BaseStrategy):
             trans = self.system.inference([sample["wav"]])
             err = wer(sample["text"], trans[0])
             errs.append(err)
+            transcriptions.append((sample["text"], trans[0]))
             loss = self.system.calc_loss(
                 [sample["wav"]],
                 em_coef=self.config["em_coef"],
@@ -88,6 +93,7 @@ class SUTAStrategy(BaseStrategy):
         return {
             "wers": errs,
             "n_words": n_words,
+            "transcriptions": transcriptions,
             "losses": losses,
         }
     

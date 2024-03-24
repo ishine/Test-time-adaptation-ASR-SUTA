@@ -4,14 +4,10 @@ opt: AdamW
 lr: 0.00002
 scheduler: null
 
-steps: 10
-em_coef: 0.3
-div_coef: 0
-non_blank: True
+steps: 1
 train_feature: True
 train_LN: True
 train_all: False
-reweight: True
 bias_only: False
-temp: 2.5
-l2_coef: 0
+
+restore_ratio: 0.01

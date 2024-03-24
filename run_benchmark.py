@@ -1,4 +1,5 @@
 import os
+import gc
 import argparse
 import yaml
 import json
@@ -57,12 +58,17 @@ def main(args):
     # log
     print(f"WER: {wer * 100:.2f}%")
     print("Step count: ", strategy.get_adapt_count())
+    os.makedirs(config["output_dir"]["log_dir"], exist_ok=True)
     os.makedirs(config["output_dir"]["result_dir"], exist_ok=True)
     with open(f'{exp_root}/results.txt', "w") as f:
         f.write(f"WER: {wer * 100:.2f}%\n")
         f.write(f"Step count: {strategy.get_adapt_count()}\n")
     with open(f'{config["output_dir"]["result_dir"]}/results.pkl', "wb") as f:
         pickle.dump(results, f)
+    if "transcriptions" in results:
+        with open(f'{config["output_dir"]["log_dir"]}/transcriptions.txt', "w") as f:
+            for (orig, pred), wer in zip(results["transcriptions"], results["wers"]):
+                f.write(f"{wer * 100:.2f}%|{orig}|{pred}\n")
 
 
 if __name__ == "__main__":
@@ -71,7 +77,15 @@ if __name__ == "__main__":
     parser.add_argument('-t', '--task_name', type=str)
     parser.add_argument('-n', '--exp_name', type=str, default="unnamed")
     parser.add_argument('--config', type=str, default="benchmark/config.yaml")
+    parser.add_argument('--run3', action="store_true", default=False)
     
     args = parser.parse_args()
     seed_everything(666)
-    main(args)
+    if args.run3:
+        exp_name = args.exp_name
+        for i in range(3):
+            gc.collect()
+            args.exp_name = f"{exp_name}-{i}"
+            main(args)
+    else:
+        main(args)

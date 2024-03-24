@@ -14,7 +14,7 @@ class SUTAStrategy(BaseStrategy):
         self.config = config
         self.system = SUTASystem(config)
 
-        self.queue = Queue(max_size=15)
+        self.queue = Queue(max_size=5)
 
     def fix_adapt(self, sample):
         self.queue.update(sample)
@@ -41,6 +41,7 @@ class SUTAStrategy(BaseStrategy):
     def run(self, ds: Dataset):
         n_words = []
         errs, losses = [], []
+        transcriptions = []
         dataloader = DataLoader(
             ds,
             batch_size=1,
@@ -58,6 +59,7 @@ class SUTAStrategy(BaseStrategy):
             trans = self.system.inference([sample["wav"]])
             err = wer(sample["text"], trans[0])
             errs.append(err)
+            transcriptions.append((sample["text"], trans[0]))
             loss = self.system.calc_loss(
                 [sample["wav"]],
                 em_coef=self.config["em_coef"],
@@ -70,6 +72,7 @@ class SUTAStrategy(BaseStrategy):
         return {
             "wers": errs,
             "n_words": n_words,
+            "transcriptions": transcriptions,
             "losses": losses,
         }
     

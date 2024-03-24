@@ -35,10 +35,11 @@ class SUTASystem(object):
 
     def build_optimized_model(self):
         self.model.requires_grad_(False)
-        params, param_names = collect_params(self.model, self.config["bias_only"], self.config["train_feature"], self.config["train_all"], self.config["train_LN"])
-        # print(param_names)
+        params, param_names = self.collect_params()
+        # print(param_names[:10])
         for p in params:
             p.requires_grad = True
+        print("Optimizable: ", sum(p.numel() for p in self.model.parameters() if p.requires_grad))
         return params
 
     def _wav_to_model_input(self, wavs) -> torch.FloatTensor:
@@ -123,6 +124,7 @@ class SUTASystem(object):
             loss += l2_loss * l2_coef
             record["l2_loss"] = l2_loss.item()
 
+        self.model.zero_grad()
         loss.backward()
         # print(e_loss.item(), c_loss.item(), l2_loss.item())
         # print(predicted_ids)
@@ -139,10 +141,13 @@ class SUTASystem(object):
         self.adapt_count += 1
         x = self._wav_to_model_input(wavs)
         outputs = self.model(x).logits
+        predicted_ids = torch.argmax(outputs, dim=-1)
+        non_blank = torch.where(predicted_ids != 0, 1, 0).bool()
 
         # adapt
         loss = self.pseudo_labeling_loss(outputs, transcriptions)
 
+        self.model.zero_grad()
         loss.backward()
         # grad = cal_grad(model)
         # print(grad)
@@ -151,7 +156,7 @@ class SUTASystem(object):
             self.scheduler.step()
         self.model.zero_grad()
 
-        if torch.isnan(loss):
+        if torch.isnan(loss) or (not torch.any(non_blank)):
             return False
         return True
 
@@ -214,11 +219,10 @@ class SUTASystem(object):
         model_state = deepcopy(model_state)
         self.model.load_state_dict(model_state, strict=True)
         
-        # reset optimizer if None
-        if optimizer_state is None:
-            optimizer_state = self.history["init"][1]
-        optimizer_state = deepcopy(optimizer_state)
-        self.optimizer.load_state_dict(optimizer_state)
+        if optimizer_state is not None:
+            # optimizer_state = self.history["init"][1]
+            optimizer_state = deepcopy(optimizer_state)
+            self.optimizer.load_state_dict(optimizer_state)
         if scheduler_state is not None:
             scheduler_state = deepcopy(scheduler_state)
             self.scheduler.load_state_dict(scheduler_state)
@@ -227,49 +231,53 @@ class SUTASystem(object):
         """Delete specific history."""
         self.history.pop(key)
 
+    def collect_params(self):
+        """Collect the affine scale + shift parameters from batch norms.
 
-def collect_params(model, bias_only=False, train_feature=False, train_all=False, train_LN=True):
-    """Collect the affine scale + shift parameters from batch norms.
+        Walk the model's modules and collect all batch normalization parameters.
+        Return the parameters and their names.
 
-    Walk the model's modules and collect all batch normalization parameters.
-    Return the parameters and their names.
+        Note: other choices of parameterization are possible!
+        """
+        params = []
+        names = []
+        trainable = []
+        if self.config["bias_only"]:
+            trainable = ['bias']
+        else: 
+            trainable = ['weight', 'bias']
 
-    Note: other choices of parameterization are possible!
-    """
-    params = []
-    names = []
-    trainable = []
-    if bias_only:
-        trainable = ['bias']
-    else: 
-        trainable = ['weight', 'bias']
-
-    
-    for nm, m in model.named_modules():
-        # print(nm)
-        if train_LN: 
-            if isinstance(m, nn.LayerNorm):
-                for np, p in m.named_parameters():
-                    if np in trainable:  
-                        p.requires_grad = True
-                        params.append(p)
-                        names.append(f"{nm}.{np}")
-        if train_feature:
-            if len(str(nm).split('.')) > 1:
-                if str(nm).split('.')[1] == 'feature_extractor' or str(nm).split('.')[1] == 'feature_projection':
+        if self.config.get("bitfit", False):
+            for np, p in self.model.named_parameters():
+                if str(np).split('.')[1] == 'encoder' and "bias" in np:
+                    p.requires_grad = True
+                    params.append(p)
+                    names.append(np)
+        
+        for nm, m in self.model.named_modules():
+            # print(nm)
+            if self.config["train_LN"]: 
+                if isinstance(m, nn.LayerNorm):
                     for np, p in m.named_parameters():
-                        p.requires_grad = True
-                        params.append(p)
-                        names.append(f"{nm}.{np}")
-                        
-        if train_all: 
-            for np, p in m.named_parameters():
-                p.requires_grad = True
-                params.append(p)
-                names.append(f"{nm}.{np}")
-            
+                        if np in trainable:  
+                            p.requires_grad = True
+                            params.append(p)
+                            names.append(f"{nm}.{np}")
+            if self.config["train_feature"]:
+                if len(str(nm).split('.')) > 1:
+                    if str(nm).split('.')[1] == 'feature_extractor' or str(nm).split('.')[1] == 'feature_projection':
+                        for np, p in m.named_parameters():
+                            p.requires_grad = True
+                            params.append(p)
+                            names.append(f"{nm}.{np}")
+                            
+            if self.config["train_all"]: 
+                for np, p in m.named_parameters():
+                    p.requires_grad = True
+                    params.append(p)
+                    names.append(f"{nm}.{np}")
 
-    return params, names
+        return params, names
 
 
 def setup_optimizer(params, opt_name='AdamW', lr=1e-4, beta=0.9, weight_decay=0., scheduler=None, step_size=1, gamma=0.7):
