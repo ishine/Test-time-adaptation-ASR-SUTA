@@ -1,5 +1,4 @@
 from torch.utils.data import Dataset
-import yaml
 from tqdm import tqdm
 
 from systems.suta import SUTASystem
@@ -7,184 +6,96 @@ from utils.tool import wer
 from .basic import BaseStrategy
 
 
-class EMAStrategy(BaseStrategy):
+def get_task_vector(state_dict1, state_dict2):
+    task_vector = {
+        name: state_dict1[name] - state_dict2[name]
+    for name in state_dict1}
+    return task_vector
+
+
+def ema(src, tgt, alpha: float):
+    res = {}
+    for name in src:
+        res[name] = alpha * src[name] + (1 - alpha) * tgt[name]
+    return res
+
+
+class EMAStartStrategy(BaseStrategy):
     def __init__(self, config) -> None:
         self.config = config
-        self.system = SUTASystem(config)
+        self.system_config = config["config"]
+        self.system = SUTASystem(self.system_config)
 
-        self.ema_task_vector = None
-        self.alpha = 0.999
+        self.timestep = 0
+        self.alpha = config["strategy_config"]["alpha"]
+        self._init_task_vector()
+
+    def _init_task_vector(self):
+        model_state = self.system.model.state_dict()
+        self.ema_task_vector = get_task_vector(model_state, model_state)  # zero vector
 
     def _ema_update(self):
+        model_state = self.system.model.state_dict()
         origin_model_state = self.system.history["init"][0]
-        task_vector = self._get_task_vector()
-
-        if self.ema_task_vector is None:
-            assert "merged" not in self.system.history
-            self.ema_task_vector = {}
-            for name in origin_model_state:
-                self.ema_task_vector[name] = (1 - self.alpha) * task_vector[name]
-        else:
-            for name in origin_model_state:
-                self.ema_task_vector[name] = self.alpha * self.ema_task_vector[name] + (1 - self.alpha) * task_vector[name]
-        
+        task_vector = get_task_vector(model_state, origin_model_state)
+        self.ema_task_vector = ema(src=self.ema_task_vector, tgt=task_vector, alpha=self.alpha)
+    
+    def _load_start_point(self, sample):
+        if self.system.adapt_count == 0:
+            return
+        origin_model_state = self.system.history["init"][0]
         merged_model_state = {
             name: origin_model_state[name] + self.ema_task_vector[name]
         for name in origin_model_state}
-        self.system.history["merged"] = (merged_model_state, None, None)
-        self.system.load_snapshot("merged")
-        # print("merge tv")
+        self.system.history["start"] = (merged_model_state, None, None)
+        self.system.load_snapshot("start")
 
-    def _get_task_vector(self):
-        model_state = self.system.model.state_dict()
-        origin_model_state = self.system.history["init"][0]
-        task_vector = {
-            name: model_state[name] - origin_model_state[name]
-        for name in model_state}
-        return task_vector
-    
-    def adapt(self, sample):
-        for _ in range(self.config["steps"]):
-            res = self.system.adapt(
-                [sample["wav"]],
-                em_coef=self.config["em_coef"],
-                reweight=self.config["reweight"],
-                temp=self.config["temp"],
-                not_blank=self.config["non_blank"],
-                l2_coef=self.config["l2_coef"],
+    def _adapt(self, sample):
+        self.system.eval()
+        is_collapse = False
+        for _ in range(self.system_config["steps"]):
+            record = {}
+            self.system.suta_adapt(
+                wavs=[sample["wav"]],
+                record=record,
             )
-            if not res:
-                break
             self._ema_update()
-        return res
+            if record.get("collapse", False):
+                is_collapse = True
+        if is_collapse:
+            print("oh no")
     
     def _update(self, sample):
-        self.system.snapshot("checkpiont")
-        res = self.adapt(sample)
-        if not res:  # suta failed
-            print("oh no")
-            self.system.load_snapshot("checkpiont")
-            self.ema_task_vector = self._get_task_vector()
-    
+        pass  # ema-start updates during adapt
+
     def run(self, ds: Dataset):
+        long_cnt = 0
         n_words = []
         errs, losses = [], []
-        task_boundaries = getattr(ds, "task_boundaries", [])
-        self.system.snapshot("init")
-        for idx, sample in tqdm(enumerate(ds), total=len(ds)):
-            n_words.append(len(sample["text"].split(" ")))
-
-            # update
-            # if idx in task_boundaries:
-            #     print("reset") 
-            #     self.system.load_snapshot("init")
-            #     self.ema_task_vector = None
-            #     self.system.delete_snapshot("merged")
-            self._update(sample)
-
-            trans = self.system.inference([sample["wav"]])
-            err = wer(sample["text"], trans[0])
-            errs.append(err)
-            loss = self.system.calc_loss(
-                [sample["wav"]],
-                em_coef=self.config["em_coef"],
-                reweight=self.config["reweight"],
-                temp=self.config["temp"],
-                not_blank=self.config["non_blank"]
-            )
-            losses.append(loss)
-            # input()
-        
-        return {
-            "wers": errs,
-            "n_words": n_words,
-            "losses": losses,
-        }
-    
-    def get_adapt_count(self):
-        return self.system.adapt_count
-    
-
-class TIESStrategy(BaseStrategy):
-    def __init__(self, config) -> None:
-        self.config = config
-        self.system = SUTASystem(config)
-
-        self.ema_task_vector = None
-        self.alpha = 0.999
-
-    def _update_merged_model(self):
-        model_state = self.system.model.state_dict()
-        origin_model_state = self.system.history["init"][0]
-        task_vector = {
-            name: model_state[name] - origin_model_state[name]
-        for name in model_state}
-        # print("get tv")
-
-        if self.ema_task_vector is None:
-            assert "merged" not in self.system.history
-            self.ema_task_vector = {}
-            for name in model_state:
-                self.ema_task_vector[name] = (1 - self.alpha) * task_vector[name]
-        else:
-            for name in model_state:
-                self.ema_task_vector[name] = self.alpha * self.ema_task_vector[name] + (1 - self.alpha) * task_vector[name]
-        
-        merged_model_state = {
-            name: origin_model_state[name] + self.ema_task_vector[name]
-        for name in model_state}
-        self.system.history["merged"] = (merged_model_state, None, None)
-        # print("merge tv")
-    
-    def adapt(self, sample):
-        for _ in range(self.config["steps"]):
-            res = self.system.adapt(
-                [sample["wav"]],
-                em_coef=self.config["em_coef"],
-                reweight=self.config["reweight"],
-                temp=self.config["temp"],
-                not_blank=self.config["non_blank"],
-                l2_coef=self.config["l2_coef"],
-            )
-            if not res:
-                break
-        return res
-    
-    def _update(self, sample):
-        start_point = "init" if self.ema_task_vector is None else "merged"
-        self.system.load_snapshot(start_point)
-        res = self.adapt(sample)
-        if not res:  # suta failed
-            print("oh no")
-            self.system.load_snapshot(start_point)
-        self._update_merged_model()
-    
-    def run(self, ds: Dataset):
-        n_words = []
-        errs, losses = [], []
-        self.system.snapshot("init")
+        transcriptions = []
         for sample in tqdm(ds):
+            if len(sample["wav"]) > 20 * 16000:
+                long_cnt += 1
+                continue
             n_words.append(len(sample["text"].split(" ")))
 
             # update
+            self.timestep += 1
+            self._load_start_point(sample)
+            self._adapt(sample)
             self._update(sample)
 
+            self.system.eval()
             trans = self.system.inference([sample["wav"]])
             err = wer(sample["text"], trans[0])
             errs.append(err)
-            loss = self.system.calc_loss(
-                [sample["wav"]],
-                em_coef=self.config["em_coef"],
-                reweight=self.config["reweight"],
-                temp=self.config["temp"],
-                not_blank=self.config["non_blank"]
-            )
-            losses.append(loss)
-            # input()
+            transcriptions.append((sample["text"], trans[0]))
+        print(long_cnt)
         
         return {
             "wers": errs,
             "n_words": n_words,
+            "transcriptions": transcriptions,
             "losses": losses,
         }
     

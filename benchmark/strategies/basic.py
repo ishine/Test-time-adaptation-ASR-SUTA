@@ -17,9 +17,12 @@ class BaseStrategy(object):
 class NoStrategy(BaseStrategy):
     def __init__(self, config) -> None:
         self.config = config
-        self.system = SUTASystem(self.config)
+        self.system_config = config["config"]
+        self.system = SUTASystem(self.system_config)
+        self.system.eval()
     
     def run(self, ds: Dataset):
+        basenames = []
         n_words = []
         errs = []
         transcriptions = []
@@ -29,11 +32,13 @@ class NoStrategy(BaseStrategy):
             err = wer(sample["text"], trans[0])
             errs.append(err)
             transcriptions.append((sample["text"], trans[0]))
+            basenames.append(sample["id"])
         
         return {
             "wers": errs,
             "n_words": n_words,
             "transcriptions": transcriptions,
+            "basenames": basenames,
         }
     
     def get_adapt_count(self):
@@ -43,52 +48,52 @@ class NoStrategy(BaseStrategy):
 class SUTAStrategy(BaseStrategy):
     def __init__(self, config) -> None:
         self.config = config
-        self.system = SUTASystem(config)
-    
-    def fix_adapt(self, sample):
-        for _ in range(self.config["steps"]):
-            res = self.system.adapt(
-                [sample["wav"]],
-                em_coef=self.config["em_coef"],
-                reweight=self.config["reweight"],
-                temp=self.config["temp"],
-                not_blank=self.config["non_blank"],
-                l2_coef=self.config["l2_coef"],
-            )
-            if not res:
-                break
-        return res
+        self.system_config = config["config"]
+        self.system = SUTASystem(self.system_config)
     
     def _update(self, sample):
         self.system.load_snapshot("init")
-        res = self.fix_adapt(sample)
-        if not res:  # suta failed
+        self.system.eval()
+        is_collapse = False
+        for _ in range(self.system_config["steps"]):
+            record = {}
+            self.system.suta_adapt(
+                wavs=[sample["wav"]],
+                record=record,
+            )
+            if record.get("collapse", False):
+                is_collapse = True
+        if is_collapse:
             print("oh no")
-            self.system.load_snapshot("init")
     
     def run(self, ds: Dataset):
+        long_cnt = 0
         n_words = []
         errs, losses = [], []
         transcriptions = []
-        self.system.snapshot("init")
         for sample in tqdm(ds):
+            if len(sample["wav"]) > 50 * 16000:
+                long_cnt += 1
+                continue
             n_words.append(len(sample["text"].split(" ")))
 
             # update
             self._update(sample)
 
-            trans = self.system.inference([sample["wav"]])
-            err = wer(sample["text"], trans[0])
+            self.system.eval()
+            trans = self.system.inference([sample["wav"]])[0]
+            err = wer(sample["text"], trans)
             errs.append(err)
-            transcriptions.append((sample["text"], trans[0]))
-            loss = self.system.calc_loss(
-                [sample["wav"]],
-                em_coef=self.config["em_coef"],
-                reweight=self.config["reweight"],
-                temp=self.config["temp"],
-                not_blank=self.config["non_blank"]
-            )
-            losses.append(loss)
+            transcriptions.append((sample["text"], trans))
+            # loss = self.system.calc_loss(
+            #     [sample["wav"]],
+            #     em_coef=self.config["em_coef"],
+            #     reweight=self.config["reweight"],
+            #     temp=self.config["temp"],
+            #     not_blank=self.config["non_blank"]
+            # )
+            # losses.append(loss)
+        print(long_cnt)
         
         return {
             "wers": errs,
@@ -99,29 +104,80 @@ class SUTAStrategy(BaseStrategy):
     
     def get_adapt_count(self):
         return self.system.adapt_count
+
+    def load_checkpoint(self, path):
+        self.system.load(path)
             
 
 class CSUTAStrategy(SUTAStrategy):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-
-    def fix_adapt(self, sample):
-        for _ in range(self.config["steps"]):
-            res = self.system.adapt(
-                [sample["wav"]],
-                em_coef=self.config["em_coef"],
-                reweight=self.config["reweight"],
-                temp=self.config["temp"],
-                not_blank=self.config["non_blank"],
-                l2_coef=self.config["l2_coef"],
-            )
-            if not res:
-                break
-        return res
     
     def _update(self, sample):
-        self.system.snapshot("checkpoint")
-        res = self.fix_adapt(sample)
-        if not res:  # suta failed
+        # self.system.load_snapshot("init")
+        is_collapse = False
+        for _ in range(self.system_config["steps"]):
+            record = {}
+            self.system.eval()
+            self.system.suta_adapt(
+                wavs=[sample["wav"]],
+                record=record
+            )
+            if record.get("collapse", False):
+                is_collapse = True
+        if is_collapse:
             print("oh no")
-            self.system.load_snapshot("checkpoint")
+
+
+class SDPLStrategy(BaseStrategy):
+    def __init__(self, config) -> None:
+        self.config = config
+        self.system_config = config["config"]
+        self.system = SUTASystem(self.system_config)
+    
+    def _update(self, sample):
+        self.system.load_snapshot("init")
+        is_collapse = False
+        for _ in range(self.system_config["steps"]):
+            self.system.eval()
+            pl = self.system.inference([sample["wav"]])[0]
+            record = {}
+            self.system.train()
+            self.system.ctc_adapt(
+                wavs=[sample["wav"]],
+                texts=[pl],
+                record=record,
+            )
+            if record.get("collapse", False):
+                is_collapse = True
+        if is_collapse:
+            print("oh no")
+    
+    def run(self, ds: Dataset):
+        n_words = []
+        errs, losses = [], []
+        transcriptions = []
+        for sample in tqdm(ds):
+            n_words.append(len(sample["text"].split(" ")))
+
+            # update
+            self._update(sample)
+
+            self.system.eval()
+            trans = self.system.inference([sample["wav"]])[0]
+            err = wer(sample["text"], trans)
+            errs.append(err)
+            transcriptions.append((sample["text"], trans))
+        
+        return {
+            "wers": errs,
+            "n_words": n_words,
+            "transcriptions": transcriptions,
+            "losses": losses,
+        }
+    
+    def get_adapt_count(self):
+        return self.system.adapt_count
+    
+    def load_checkpoint(self, path):
+        self.system.load(path)

@@ -9,6 +9,7 @@ from tqdm import tqdm
 import re
 from builtins import str as unicode
 from scipy.io import wavfile
+import pickle
 
 from . import Define
 
@@ -70,78 +71,131 @@ class SynthCorpus(object):
         # input()
 
         return {
+            "id": wav_path,
             "wav": wav,
             "text": text
         }
 
 
 class LibriSpeechCorpus(object):
+
+    cache_dir = "_cache/LibriSpeech"
+
     def __init__(self, extra_noise=0.0) -> None:
-        self.src_dataset = load_dataset(
+        self.extra_noise = extra_noise
+        if not os.path.exists(self.cache_dir):
+            self.parse()
+        with open(f"{self.cache_dir}/data_info.json", "r", encoding="utf-8") as f:
+            basenames = json.load(f)
+        self.wav_paths = []
+        self.noise_paths = []
+        self.texts = []
+        for basename in basenames:
+            with open(f"{self.cache_dir}/text/{basename}.txt", "r", encoding="utf-8") as f:
+                text = f.read()
+                self.texts.append(text.strip())
+            self.wav_paths.append(f"{self.cache_dir}/wav/{basename}.wav")
+            self.noise_paths.append(f"{self.cache_dir}/noise/{basename}.npy")
+
+    def parse(self):
+        basenames = []
+        src_dataset = load_dataset(
             "librispeech_asr",
             split="test.other",
-            streaming=True
+            streaming=True,
+            trust_remote_code=True
         )
-
-        # create gaussian noise
-        self.extra_noise = extra_noise
-        self.noises = []
-        self.instances = []
-        for instance in tqdm(self.src_dataset):
-            wav = instance["audio"]["array"]
-            self.noises.append(np.random.randn(*wav.shape))
-            self.instances.append({
-                "audio": wav,
-                "text": instance["text"]
-            })
+        os.makedirs(f"{self.cache_dir}/wav", exist_ok=True)
+        os.makedirs(f"{self.cache_dir}/noise", exist_ok=True)
+        os.makedirs(f"{self.cache_dir}/text", exist_ok=True)
+        for idx, instance in tqdm(enumerate(src_dataset)):
+            wav = librosa.resample(
+                instance["audio"]["array"],
+                orig_sr=src_dataset.features["audio"].sampling_rate,
+                target_sr=16000
+            )
+            wavfile.write(f"{self.cache_dir}/wav/{idx:07d}.wav", 16000, (wav * 32767).astype(np.int16))
+            noise = np.random.randn(*wav.shape)
+            with open(f"{self.cache_dir}/noise/{idx:07d}.npy", "wb") as f:
+                np.save(f, noise)
+            with open(f"{self.cache_dir}/text/{idx:07d}.txt", "w", encoding="utf-8") as f:
+                f.write(instance["text"])
+            basenames.append(f"{idx:07d}")
+        with open(f"{self.cache_dir}/data_info.json", "w", encoding="utf-8") as f:
+            json.dump(basenames, f, indent=4)
 
     def __len__(self):
-        return len(self.noises)
+        return len(self.wav_paths)
     
     def get(self, idx) -> np.ndarray:
-        instance = self.instances[idx]
-        wav = instance["audio"]
-        text = instance["text"]
-        noise = self.noises[idx]
+        wav, _ = librosa.load(self.wav_paths[idx], sr=16000)
+        text = self.texts[idx]
+
+        if self.extra_noise > 0:
+            with open(self.noise_paths[idx], "rb") as f:
+                noise = np.load(f)
+            wav = wav + self.extra_noise * noise
 
         return {
-            "wav": wav + self.extra_noise * noise,
+            "id": self.wav_paths[idx],
+            "wav": wav,
             "text": text
         }
 
 
 class CommonVoiceCorpus(object):
-    def __init__(self) -> None:
-        self.src_dataset = load_dataset(
+
+    cache_dir = "_cache/CommonVoice"
+
+    def __init__(self, partial=True) -> None:
+        if not os.path.exists(self.cache_dir):
+            self.parse()
+        with open(f"{self.cache_dir}/data_info.json", "r", encoding="utf-8") as f:
+            basenames = json.load(f)
+        self.wav_paths = []
+        self.texts = []
+        if partial:
+            basenames = basenames[:5000]
+        for basename in basenames:
+            with open(f"{self.cache_dir}/text/{basename}.txt", "r", encoding="utf-8") as f:
+                text = f.read()
+                self.texts.append(text.strip())
+            self.wav_paths.append(f"{self.cache_dir}/wav/{basename}.wav")
+
+    def parse(self):
+        basenames = []
+        src_dataset = load_dataset(
             "mozilla-foundation/common_voice_16_1",
             "en",
             split="test",
-            streaming=True
+            streaming=True,
+            use_auth_token=True,
+            trust_remote_code=True
         )
-
-        self.instances = []
-        for instance in tqdm(self.src_dataset):
+        os.makedirs(f"{self.cache_dir}/wav", exist_ok=True)
+        os.makedirs(f"{self.cache_dir}/text", exist_ok=True)
+        for idx, instance in tqdm(enumerate(src_dataset)):
             wav = librosa.resample(
                 instance["audio"]["array"],
-                orig_sr=self.src_dataset.features["audio"].sampling_rate,
+                orig_sr=src_dataset.features["audio"].sampling_rate,
                 target_sr=16000
             )
-            self.instances.append({
-                "audio": wav,
-                "text": instance["sentence"]
-            })
-            # wavfile.write("check.wav", 16000, (wav * 32767).astype(np.int16))
-            # input()
+            wavfile.write(f"{self.cache_dir}/wav/{idx:07d}.wav", 16000, (wav * 32767).astype(np.int16))
+            with open(f"{self.cache_dir}/text/{idx:07d}.txt", "w", encoding="utf-8") as f:
+                f.write(instance["sentence"])
+            basenames.append(f"{idx:07d}")
+        with open(f"{self.cache_dir}/data_info.json", "w", encoding="utf-8") as f:
+            json.dump(basenames, f, indent=4)
 
     def __len__(self):
-        return len(self.instances)
+        return len(self.wav_paths)
     
     def get(self, idx) -> np.ndarray:
-        instance = self.instances[idx]
-        wav = instance["audio"]
-        text = preprocess_text(instance["text"])
+        wav, _ = librosa.load(self.wav_paths[idx], sr=16000)
+        text = preprocess_text(self.texts[idx])
 
         return {
+            "id": self.wav_paths[idx],
             "wav": wav,
             "text": text
         }
@@ -335,6 +389,7 @@ class NoisyL2ArcticCorpus(object):
         # input()
 
         return {
+            "id": wav_path,
             "wav": wav,
             "text": text
         }
@@ -386,9 +441,84 @@ class CHIMECorpus(object):
     def get(self, index):
         wav, _ = librosa.load(self.file_list[index], sr=16000)
         return {
+            "id": self.file_list[index],
             "wav": wav,
             "text": self.text[index]
         }
 
     def __len__(self):
         return len(self.file_list)
+
+
+class TEDCorpus(object):
+
+    cache_dir = "_cache/TED"
+
+    def __init__(self) -> None:
+        if not os.path.exists(self.cache_dir):
+            self.parse()
+        with open(f"{self.cache_dir}/data_info.json", "r", encoding="utf-8") as f:
+            info = json.load(f)
+        
+        self.wav_paths = []
+        self.texts = []
+        self.speaker_ids = []
+        for (basename, speaker_id) in info:
+            with open(f"{self.cache_dir}/text/{basename}.txt", "r", encoding="utf-8") as f:
+                text = f.read()
+                self.texts.append(text.strip())
+            self.wav_paths.append(f"{self.cache_dir}/wav/{basename}.wav")
+            self.speaker_ids.append(speaker_id)
+
+    def parse(self):
+        basenames = []
+        speaker_ids = []
+        src_dataset = load_dataset(
+            "LIUM/tedlium",
+            "release3",
+            split="test",
+            streaming=True,
+            use_auth_token=True,
+            trust_remote_code=True
+        )
+        os.makedirs(f"{self.cache_dir}/wav", exist_ok=True)
+        os.makedirs(f"{self.cache_dir}/text", exist_ok=True)
+        cnt = 0
+        for idx, instance in tqdm(enumerate(src_dataset)):
+            if instance["speaker_id"] == "inter_segment_gap":
+                continue
+            wav = librosa.resample(
+                instance["audio"]["array"],
+                orig_sr=src_dataset.features["audio"].sampling_rate,
+                target_sr=16000
+            )
+            wavfile.write(f"{self.cache_dir}/wav/{cnt:07d}.wav", 16000, (wav * 32767).astype(np.int16))
+            with open(f"{self.cache_dir}/text/{cnt:07d}.txt", "w", encoding="utf-8") as f:
+                f.write(instance["text"])
+            basenames.append(f"{cnt:07d}")
+            speaker_ids.append(instance["speaker_id"])
+            cnt += 1
+        with open(f"{self.cache_dir}/data_info.json", "w", encoding="utf-8") as f:
+            json.dump(list(zip(basenames, speaker_ids)), f, indent=4)
+
+    def __len__(self):
+        return len(self.wav_paths)
+    
+    def get(self, idx) -> np.ndarray:
+        wav, _ = librosa.load(self.wav_paths[idx], sr=16000)
+        text = self.preprocess_text(self.texts[idx])
+
+        return {
+            "id": self.wav_paths[idx],
+            "wav": wav,
+            "text": text
+        }
+
+    def preprocess_text(self, text):
+        text = text.upper()
+        text = text.replace(" '", "'")
+        text = text.replace("-", " ")
+        text = re.sub("[^ A-Z']", "", text)
+        text = ' '.join(text.split())
+        
+        return text

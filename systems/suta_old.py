@@ -8,6 +8,7 @@ import json
 from dlhlp_lib.utils.generators import batchify
 
 from .loss import softmax_entropy, mcc_loss, div_loss
+from utils.tool import pad_1D
 
 
 class SUTASystem(object):
@@ -93,6 +94,25 @@ class SUTASystem(object):
             if param.requires_grad:
                 l2_loss += torch.sum((param - orig_state_dict[name]) ** 2)
         return l2_loss
+
+    # def pseudo_labeling_loss(self, outputs, transcriptions):
+    #     targets = []
+    #     for transcription in transcriptions:
+    #         target = []
+    #         for s in transcription:
+    #             if s == ' ':
+    #                 s = '|'
+    #             target.append(self.vocab[s])
+    #         targets.append(np.array(target))
+    #     tgt_lens = [len(t) for t in targets]
+    #     # print(targets)
+    #     targets = torch.from_numpy(pad_1D(targets)).int()
+
+    #     logp = outputs.log_softmax(2).transpose(1, 0) # L,N,D
+    #     input_len = [logp.shape[0]] * len(tgt_lens)
+    #     loss = self.ctc_loss(logp, targets, torch.tensor(input_len), torch.tensor(tgt_lens))
+        
+    #     return loss
 
     def suta_adapt(self, wavs, record={}):
         """
@@ -195,15 +215,12 @@ class SUTASystem(object):
 
         return loss
 
-    def suta_adapt_auto(self, wavs, batch_size=-1, record={}) -> None:
+    def suta_adapt_auto(self, wavs, texts, batch_size=4, record={}) -> None:
         """ suta_adapt auto split to smaller batch """
         self.adapt_count += 1
-        if batch_size == -1:
-            batch_size == len(wavs)
         self.model.zero_grad()
         denom_scale = len(wavs) // batch_size
-        assert denom_scale > 0
-        for wavs in batchify(wavs, batch_size=batch_size):
+        for wavs, texts in zip(batchify(wavs, batch_size=batch_size), batchify(texts, batch_size=batch_size)):
             loss = self.suta_adapt_loss_only(wavs, record=record)
             self.adapt_count -= 1  # avoid repeat count
             loss = loss / denom_scale
@@ -254,14 +271,11 @@ class SUTASystem(object):
 
         return loss
 
-    def ctc_adapt_auto(self, wavs, texts, batch_size=-1, record={}) -> None:
+    def ctc_adapt_auto(self, wavs, texts, batch_size=4, record={}) -> None:
         """ ctc_adapt auto split to smaller batch """
         self.adapt_count += 1
-        if batch_size == -1:
-            batch_size == len(wavs)
         self.model.zero_grad()
         denom_scale = len(wavs) // batch_size
-        assert denom_scale > 0
         for wavs, texts in zip(batchify(wavs, batch_size=batch_size), batchify(texts, batch_size=batch_size)):
             loss = self.ctc_adapt_loss_only(wavs, texts, record=record)
             self.adapt_count -= 1  # avoid repeat count
@@ -270,6 +284,91 @@ class SUTASystem(object):
     
         self.optimizer.step()
         self.model.zero_grad()
+
+    def adapt(self, wavs, em_coef=0.9, reweight=False, temp=1., non_blank=True, 
+                        div_coef=0, l2_coef=0, repeat_inference=True, skip_short_thd=None, record={}):
+        """Forward and adapt model on batch of data.
+
+        Measure entropy of the model prediction, take gradients, and update params.
+
+        the index of <pad> in vocab is 0
+        
+        Due to wav2vec2-base special design, attention mask is always none, so ctc input length is always the
+        full length, model should learn to output id=0 on the padded part of wav.
+        """
+        self.adapt_count += 1
+        x = self._wav_to_model_input(wavs)
+
+        # forward
+        outputs = self.model(**x).logits
+        
+        predicted_ids = torch.argmax(outputs, dim=-1)
+        non_blank = torch.where(predicted_ids != 0, 1, 0).bool()
+        # adapt
+        loss = 0
+
+        if em_coef > 0: 
+            if non_blank:      
+                e_loss = softmax_entropy(outputs / temp)[non_blank].mean(0).mean()
+        
+            else: 
+                e_loss = softmax_entropy(outputs / temp).mean(0).mean() 
+            
+            loss += e_loss * em_coef
+            record["e_loss"] = e_loss.item()
+
+        if 1 - em_coef > 0: 
+            c_loss = mcc_loss(outputs / temp, reweight)
+            loss += c_loss * (1 - em_coef)
+            record["c_loss"] = c_loss.item()
+
+        if div_coef > 0: 
+            d_loss = div_loss(outputs, non_blank) 
+            loss += d_loss * div_coef
+            record["d_loss"] = d_loss.item()
+        
+        record["total_loss"] = loss.item()
+
+        if l2_coef > 0: 
+            l2_loss = self.l2_loss()
+            loss += l2_loss * l2_coef
+            record["l2_loss"] = l2_loss.item()
+
+        self.model.zero_grad()
+        loss.backward()
+        # print(e_loss.item(), c_loss.item(), l2_loss.item())
+        # print(predicted_ids)
+        self.optimizer.step()
+        if self.scheduler is not None: 
+            self.scheduler.step()
+        self.model.zero_grad()
+        if torch.isnan(e_loss):
+            return False
+        return True
+
+    # def pl_adapt(self, wavs, transcriptions: list[str]):
+    #     # forward
+    #     self.adapt_count += 1
+    #     x = self._wav_to_model_input(wavs)
+    #     outputs = self.model(x).logits
+    #     predicted_ids = torch.argmax(outputs, dim=-1)
+    #     non_blank = torch.where(predicted_ids != 0, 1, 0).bool()
+
+    #     # adapt
+    #     loss = self.pseudo_labeling_loss(outputs, transcriptions)
+
+    #     self.model.zero_grad()
+    #     loss.backward()
+    #     # grad = cal_grad(model)
+    #     # print(grad)
+    #     self.optimizer.step()
+    #     if self.scheduler is not None: 
+    #         self.scheduler.step()
+    #     self.model.zero_grad()
+
+    #     if torch.isnan(loss) or (not torch.any(non_blank)):
+    #         return False
+    #     return True
 
     @torch.no_grad()
     def inference(self, wavs):
