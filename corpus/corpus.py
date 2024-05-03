@@ -77,7 +77,7 @@ class SynthCorpus(object):
         }
 
 
-class LibriSpeechCorpus(object):
+class LibriSpeechCorpusOld(object):
 
     cache_dir = "_cache/LibriSpeech"
 
@@ -138,6 +138,62 @@ class LibriSpeechCorpus(object):
 
         return {
             "id": self.wav_paths[idx],
+            "wav": wav,
+            "text": text
+        }
+
+
+class LibriSpeechCorpus(object):
+    def __init__(self) -> None:
+        self.root = "_cache/LibriSpeech"
+        with open(f"{self.root}/data_info.json", "r", encoding="utf-8") as f:
+            self.data_info = json.load(f)
+        
+        # Filter out long wavs > 20s
+        self.filtered_idxs = []
+        for idx, query in enumerate(self.data_info):
+            if query["length"] <= 20 * 16000:
+                self.filtered_idxs.append(idx)
+
+    def __len__(self):
+        return len(self.filtered_idxs)
+    
+    def get(self, idx):
+        query = self.data_info[self.filtered_idxs[idx]]
+        basename = query['basename']
+        wav, _ = librosa.load(f"{self.root}/wav/{basename}.wav", sr=16000)
+        text = query['text']
+
+        return {
+            "id": basename,
+            "wav": wav,
+            "text": text
+        }
+
+
+class LibriSpeechCCorpus(object):
+    def __init__(self, root: str) -> None:
+        self.root = root
+        with open(f"{self.root}/data_info.json", "r", encoding="utf-8") as f:
+            self.data_info = json.load(f)
+        
+        # Filter out long wavs > 20s
+        self.filtered_idxs = []
+        for idx, query in enumerate(self.data_info):
+            if query["length"] <= 20 * 16000:
+                self.filtered_idxs.append(idx)
+
+    def __len__(self):
+        return len(self.filtered_idxs)
+    
+    def get(self, idx):
+        query = self.data_info[self.filtered_idxs[idx]]
+        basename = query['basename']
+        wav, _ = librosa.load(f"{self.root}/wav/{basename}.wav", sr=16000)
+        text = query['text']
+
+        return {
+            "id": basename,
             "wav": wav,
             "text": text
         }

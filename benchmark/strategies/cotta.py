@@ -1,7 +1,9 @@
+import os
 import torch
 from torch.utils.data import Dataset, DataLoader
 import yaml
 from tqdm import tqdm
+import json
 
 from systems.suta import SUTASystem
 from utils.tool import wer
@@ -11,14 +13,21 @@ from .basic import BaseStrategy
 class CoTTAStrategy(BaseStrategy):
     def __init__(self, config) -> None:
         self.config = config
-        self.system = SUTASystem(config)
-        self.teacher = SUTASystem(config)
+        self.system_config = config["config"]
+        self.system = SUTASystem(self.system_config)
+        self.teacher = SUTASystem(self.system_config)
+
+        # setup teacher
+        self.teacher.eval()
         for param in self.teacher.model.parameters():
             param.detach_()
 
         self.ema_task_vector = None
         self.alpha = 0.999
-        self.restore_ratio = config["restore_ratio"]
+        self.restore_ratio = self.system_config["restore_ratio"]
+
+        # log
+        self.transcriptions = []
 
     @torch.no_grad
     def _ema_update_and_stochastic_restore(self):
@@ -56,47 +65,50 @@ class CoTTAStrategy(BaseStrategy):
         for name in model_state}
         return task_vector
     
-    def adapt(self, sample):
-        teacher_pl_target = self.teacher.inference([sample["wav"]])[0]
-        # print("PL: ", teacher_pl_target)
-        for _ in range(self.config["steps"]):
-            res = self.system.pl_adapt(
-                [sample["wav"]],
-                transcriptions=[teacher_pl_target],
-            )
-            if not res:
-                break
-            self._ema_update_and_stochastic_restore()
-        return res
-    
     def _update(self, sample):
-        self.system.snapshot("checkpoint")
-        self.teacher.snapshot("checkpoint")
-        res = self.adapt(sample)
-        if not res:  # suta failed
+        teacher_pl_target = self.teacher.inference([sample["wav"]])[0]
+        self.transcriptions[-1]["teacher"] = teacher_pl_target
+        self.system.train()
+        is_collapse = False
+        for _ in range(self.system_config["steps"]):
+            record = {}
+            self.system.ctc_adapt(
+                wavs=[sample["wav"]],
+                texts=[teacher_pl_target],
+                record=record,
+            )
+            if record.get("collapse", False):
+                is_collapse = True
+            self._ema_update_and_stochastic_restore()
+        if is_collapse:
             print("oh no")
-            self.system.load_snapshot("checkpoint")
-            self.teacher.load_snapshot("checkpoint")
-            self.ema_task_vector = self._get_task_vector(teacher=True)
     
     def run(self, ds: Dataset):
         n_words = []
         errs, losses = [], []
         transcriptions = []
-        self.system.snapshot("init")
         for idx, sample in tqdm(enumerate(ds), total=len(ds)):
+            self.transcriptions.append({})
             n_words.append(len(sample["text"].split(" ")))
 
             # update
             self._update(sample)
 
-            trans = self.system.inference([sample["wav"]])
-            err = wer(sample["text"], trans[0])
+            self.system.eval()
+            trans = self.system.inference([sample["wav"]])[0]
+            err = wer(sample["text"], trans)
             errs.append(err)
-            transcriptions.append((sample["text"], trans[0]))
+            transcriptions.append((sample["text"], trans))
+            self.transcriptions[-1]["system"] = trans
+            self.transcriptions[-1]["gt"] = sample["text"]
             # print(sample["text"])
             # print(trans[0])
             # input()
+        
+        # log
+        os.makedirs(self.config["output_dir"]["log_dir"], exist_ok=True)
+        with open(f"{self.config['output_dir']['log_dir']}/log.json", "w") as f:
+            json.dump(self.transcriptions, f, indent=4)
         
         return {
             "wers": errs,

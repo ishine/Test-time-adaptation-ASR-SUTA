@@ -1,7 +1,7 @@
 from torch.utils.data import Dataset
 import random
 
-from corpus.corpus import LibriSpeechCorpus
+from corpus.corpus import LibriSpeechCorpus, LibriSpeechCorpusOld
 
 
 class RandomSequence(Dataset):
@@ -20,7 +20,7 @@ class RandomSequence(Dataset):
 
 class RandomSequence1(Dataset):
     def __init__(self) -> None:
-        self.corpus = LibriSpeechCorpus(extra_noise=0.005)
+        self.corpus = LibriSpeechCorpusOld(extra_noise=0.005)
         self.idx_seq = list(range(len(self.corpus)))
         self.task_boundaries = []
         random.shuffle(self.idx_seq)
@@ -34,7 +34,7 @@ class RandomSequence1(Dataset):
 
 class RandomSequence2(Dataset):
     def __init__(self) -> None:
-        self.corpus = LibriSpeechCorpus(extra_noise=0.01)
+        self.corpus = LibriSpeechCorpusOld(extra_noise=0.01)
         self.idx_seq = list(range(len(self.corpus)))
         self.task_boundaries = []
         random.shuffle(self.idx_seq)
