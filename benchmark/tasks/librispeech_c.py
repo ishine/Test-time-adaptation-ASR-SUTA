@@ -1,4 +1,4 @@
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, Subset, ConcatDataset
 import random
 
 from corpus.corpus import LibriSpeechCCorpus
@@ -17,3 +17,198 @@ class RandomSequence(Dataset):
     
     def __getitem__(self, idx):
         return self.corpus.get(self.idx_seq[idx])
+
+
+
+class ConcatSequence(Dataset):
+    def __init__(self, datasets: list[Dataset], tid_seq: list[int], tidx_seq: list[int], task_boundaries: list[int]=[]) -> None:
+        self.datasets = datasets
+        self.tid_seq = tid_seq
+        self.tidx_seq = tidx_seq
+        self.task_boundaries = task_boundaries
+
+    def __len__(self):
+        return len(self.tidx_seq)
+    
+    def __getitem__(self, idx):
+        tid = self.tid_seq[idx]
+        tidx = self.tidx_seq[idx]
+
+        return {
+            "tid": tid,
+            **self.datasets[tid].__getitem__(tidx)
+        }
+
+
+class LongSequence1(Dataset):
+    def __new__(cls):
+        datasets = [
+            RandomSequence("GS", 5),
+            RandomSequence("MU", 5),
+            RandomSequence("VC", 5),
+            RandomSequence("BA", 5),
+            RandomSequence("NB", 5),
+        ]
+        tid_seq = []
+        for i in range(len(datasets)):
+            tid_seq.extend([i] * 500)
+        tidx_seq = list(range(500)) * 5
+        task_boundaries = [500 * i for i in range(1, 5)]
+
+        return ConcatSequence(datasets, tid_seq, tidx_seq, task_boundaries=task_boundaries)
+
+
+class LongSequence2(Dataset):
+    def __new__(cls):
+        datasets = [
+            RandomSequence("GS", 5),
+            RandomSequence("MU", 5),
+            RandomSequence("VC", 5),
+            RandomSequence("BA", 5),
+            RandomSequence("NB", 5),
+        ]
+        tid_seq = []
+        for i in range(len(datasets)):
+            tid_seq.extend([i] * 100)
+        tid_seq = tid_seq * 5
+
+        tidx_seq = []
+        st = 0
+        for _ in range(5):
+            tidx_seq.extend(list(range(st, st+100)) * 5)
+            st += 100
+        task_boundaries = [100 * i for i in range(1, 25)]
+
+        return ConcatSequence(datasets, tid_seq, tidx_seq, task_boundaries=task_boundaries)
+    
+
+class LongSequence3(Dataset):
+    def __new__(cls):
+        datasets = [
+            RandomSequence("GS", 5),
+            RandomSequence("MU", 5),
+            RandomSequence("VC", 5),
+            RandomSequence("BA", 5),
+            RandomSequence("NB", 5),
+        ]
+        tid_seq = []
+        for i in range(len(datasets)):
+            tid_seq.extend([i] * 20)
+        tid_seq = tid_seq * 25
+
+        tidx_seq = []
+        st = 0
+        for _ in range(25):
+            tidx_seq.extend(list(range(st, st+20)) * 5)
+            st += 20
+        task_boundaries = [20 * i for i in range(1, 125)]
+
+        return ConcatSequence(datasets, tid_seq, tidx_seq, task_boundaries=task_boundaries)
+    
+
+class LongSequence4(Dataset):
+    def __new__(cls):
+        datasets = [
+            RandomSequence("AC", 5),
+            RandomSequence("CM", 5),
+            RandomSequence("TP", 5),
+            RandomSequence("AA", 5),
+            RandomSequence("MU", 5),
+        ]
+        tid_seq = []
+        for i in range(len(datasets)):
+            tid_seq.extend([i] * 500)
+        tidx_seq = list(range(500)) * 5
+        task_boundaries = [500 * i for i in range(1, 5)]
+
+        return ConcatSequence(datasets, tid_seq, tidx_seq, task_boundaries=task_boundaries)
+
+
+class LongSequence5(Dataset):
+    def __new__(cls):
+        datasets = [
+            RandomSequence("AC", 5),
+            RandomSequence("CM", 5),
+            RandomSequence("TP", 5),
+            RandomSequence("AA", 5),
+            RandomSequence("MU", 5),
+        ]
+        tid_seq = []
+        for i in range(len(datasets)):
+            tid_seq.extend([i] * 100)
+        tid_seq = tid_seq * 5
+
+        tidx_seq = []
+        st = 0
+        for _ in range(5):
+            tidx_seq.extend(list(range(st, st+100)) * 5)
+            st += 100
+        task_boundaries = [100 * i for i in range(1, 25)]
+        
+        return ConcatSequence(datasets, tid_seq, tidx_seq, task_boundaries=task_boundaries)
+    
+
+class LongSequence6(Dataset):
+    def __new__(cls):
+        datasets = [
+            RandomSequence("AC", 5),
+            RandomSequence("CM", 5),
+            RandomSequence("TP", 5),
+            RandomSequence("AA", 5),
+            RandomSequence("MU", 5),
+        ]
+        tid_seq = []
+        for i in range(len(datasets)):
+            tid_seq.extend([i] * 20)
+        tid_seq = tid_seq * 25
+
+        tidx_seq = []
+        st = 0
+        for _ in range(25):
+            tidx_seq.extend(list(range(st, st+20)) * 5)
+            st += 20
+        task_boundaries = [20 * i for i in range(1, 125)]
+
+        return ConcatSequence(datasets, tid_seq, tidx_seq, task_boundaries=task_boundaries)
+
+
+class LongIIDSequence1(Dataset):
+    def __init__(self):
+        datasets = [
+            Subset(RandomSequence("GS", 5), list(range(500))),
+            Subset(RandomSequence("MU", 5), list(range(500))),
+            Subset(RandomSequence("VC", 5), list(range(500))),
+            Subset(RandomSequence("BA", 5), list(range(500))),
+            Subset(RandomSequence("NB", 5), list(range(500))),
+        ]
+        self.corpus = ConcatDataset(datasets)
+        self.idx_seq = list(range(len(self.corpus)))
+        self.task_boundaries = []
+        random.shuffle(self.idx_seq)
+
+    def __len__(self):
+        return len(self.corpus)
+    
+    def __getitem__(self, idx):
+        return self.corpus.__getitem__(self.idx_seq[idx])
+
+
+class LongIIDSequence2(Dataset):
+    def __init__(self):
+        datasets = [
+            Subset(RandomSequence("AC", 5), list(range(500))),
+            Subset(RandomSequence("CM", 5), list(range(500))),
+            Subset(RandomSequence("TP", 5), list(range(500))),
+            Subset(RandomSequence("AA", 5), list(range(500))),
+            Subset(RandomSequence("MU", 5), list(range(500))),
+        ]
+        self.corpus = ConcatDataset(datasets)
+        self.idx_seq = list(range(len(self.corpus)))
+        self.task_boundaries = []
+        random.shuffle(self.idx_seq)
+
+    def __len__(self):
+        return len(self.corpus)
+    
+    def __getitem__(self, idx):
+        return self.corpus.__getitem__(self.idx_seq[idx])

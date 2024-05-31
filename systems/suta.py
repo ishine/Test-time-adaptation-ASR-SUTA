@@ -44,7 +44,7 @@ class SUTASystem(object):
 
     def build_optimized_model(self):
         self.model.requires_grad_(False)
-        params, param_names = self.collect_params()
+        params, self.opt_param_names = self.collect_params()
         # print(param_names[:10])
         for p in params:
             p.requires_grad = True
@@ -281,36 +281,18 @@ class SUTASystem(object):
         return list(transcription)
     
     @torch.no_grad()
-    def calc_loss(self, wavs, em_coef=0.9, reweight=False, temp=1., non_blank=True):
-        x = self._wav_to_model_input(wavs)
-        outputs = self.model(**x).logits
-        
-        predicted_ids = torch.argmax(outputs, dim=-1)
-        non_blank = torch.where(predicted_ids != 0, 1, 0).bool()
-        loss = 0
-        if em_coef > 0: 
-            if non_blank:      
-                e_loss = softmax_entropy(outputs / temp)[non_blank].mean(0).mean()
-        
-            else: 
-                e_loss = softmax_entropy(outputs / temp).mean(0).mean() 
-            
-            loss += e_loss * em_coef
+    def calc_suta_loss(self, wavs):
+        record = {}
+        self.suta_adapt_loss_only(wavs, record=record)
+        self.adapt_count -= 1
+        return record
 
-        if 1 - em_coef > 0: 
-            c_loss = mcc_loss(outputs / temp, reweight)
-            loss += c_loss * (1 - em_coef)
-
-        # l2_loss = self.l2_loss() * self.config["l2_coef_crit"]
-        # loss += l2_loss
-        # print(l2_loss.item())
-
-        return {
-            "e_loss": e_loss.item(),
-            "c_loss": c_loss.item(),
-            # "l2_loss": l2_loss.item(),
-            "total_loss": loss.item()
-        }
+    @torch.no_grad()
+    def calc_ctc_loss(self, wavs, texts):
+        record = {}
+        self.ctc_adapt_loss_only(wavs, texts, record=record)
+        self.adapt_count -= 1
+        return record
 
     def snapshot(self, key: str):
         """Copy the model and optimizer states for resetting after adaptation."""
@@ -376,10 +358,11 @@ class SUTASystem(object):
             if self.config["train_LN"]: 
                 if isinstance(m, nn.LayerNorm):
                     for np, p in m.named_parameters():
-                        if np in trainable:  
-                            p.requires_grad = True
-                            params.append(p)
-                            names.append(f"{nm}.{np}")
+                        if np in trainable:
+                            if not p.requires_grad:
+                                p.requires_grad = True
+                                params.append(p)
+                                names.append(f"{nm}.{np}")
             if self.config["train_feature"]:
                 if len(str(nm).split('.')) > 1:
                     if str(nm).split('.')[1] == 'feature_extractor' or str(nm).split('.')[1] == 'feature_projection':

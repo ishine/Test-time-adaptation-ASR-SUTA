@@ -34,30 +34,12 @@ class UnsupStrategy(BaseStrategy):
                 if len(sample["wav"]) <= 20 * 16000:
                     self.queue.update(sample)
 
-                # if (idx + 1) % self.bs == 0:
-                #     is_collapse = False
-                #     record = {}
-                #     loss = self.system.suta_adapt_loss_only(
-                #         wavs=[s["wav"] for s in self.queue.data],
-                #         record=record,
-                #     )
-                #     loss = loss / self.gradient_accumulation_step
-                #     loss.backward()
-                #     if record.get("collapse", False):
-                #         is_collapse = True
-                #     if is_collapse:
-                #         print("oh no")
-                # if (idx + 1) % (self.bs * self.gradient_accumulation_step) == 0:
-                #     self.system.optimizer.step()
-                #     self.system.model.zero_grad()
-
                 if (idx + 1) % (self.bs * self.gradient_accumulation_step) == 0:
                     record = {}
                     self.system.suta_adapt_auto(
                         wavs=[s["wav"] for s in self.queue.data],
-                        texts=[s["text"] for s in self.queue.data], 
                         record=record,
-                        batch_size=self.bs
+                        batch_size=2
                     )
                     if record.get("collapse", False):
                         print("oh no")
@@ -73,7 +55,7 @@ class UnsupStrategy(BaseStrategy):
         self.system.eval()
 
         n_words = []
-        errs = []
+        errs, losses = [], []
         transcriptions = []
         for sample in tqdm(ds):
             n_words.append(len(sample["text"].split(" ")))
@@ -81,11 +63,18 @@ class UnsupStrategy(BaseStrategy):
             err = wer(sample["text"], trans[0])
             errs.append(err)
             transcriptions.append((sample["text"], trans[0]))
+
+            # loss
+            loss = self.system.calc_suta_loss([sample["wav"]])
+            ctc_loss = self.system.calc_ctc_loss([sample["wav"]], [sample["text"]])
+            loss["ctc_loss"] = ctc_loss["ctc_loss"]
+            losses.append(loss)
         
         return {
             "wers": errs,
             "n_words": n_words,
             "transcriptions": transcriptions,
+            "losses": losses,
         }
 
 
@@ -95,7 +84,7 @@ class SupStrategy(BaseStrategy):
         self.system_config = config["config"]
         self.system = SUTASystem(self.system_config)
 
-        self.queue = Queue(max_size=4)
+        self.queue = Queue(max_size=16)
         self.bs = 4
         self.gradient_accumulation_step = 4
     
@@ -113,24 +102,6 @@ class SupStrategy(BaseStrategy):
                 sample = sample[0]
                 if len(sample["wav"]) <= 20 * 16000:
                     self.queue.update(sample)
-
-                # if (idx + 1) % self.bs == 0:
-                #     is_collapse = False
-                #     record = {}
-                #     loss = self.system.ctc_adapt_loss_only(
-                #         wavs=[s["wav"] for s in self.queue.data],
-                #         texts=[s["text"] for s in self.queue.data], 
-                #         record=record,
-                #     )
-                #     loss = loss / self.gradient_accumulation_step
-                #     loss.backward()
-                #     if record.get("collapse", False):
-                #         is_collapse = True
-                #     if is_collapse:
-                #         print("oh no")
-                # if (idx + 1) % (self.bs * self.gradient_accumulation_step) == 0:
-                #     self.system.optimizer.step()
-                #     self.system.model.zero_grad()
                 
                 if (idx + 1) % (self.bs * self.gradient_accumulation_step) == 0:
                     record = {}
@@ -138,7 +109,7 @@ class SupStrategy(BaseStrategy):
                         wavs=[s["wav"] for s in self.queue.data],
                         texts=[s["text"] for s in self.queue.data], 
                         record=record,
-                        batch_size=self.bs
+                        batch_size=2
                     )
                     if record.get("collapse", False):
                         print("oh no")
@@ -154,7 +125,7 @@ class SupStrategy(BaseStrategy):
         self.system.eval()
 
         n_words = []
-        errs = []
+        errs, losses = [], []
         transcriptions = []
         for sample in tqdm(ds):
             n_words.append(len(sample["text"].split(" ")))
@@ -162,11 +133,89 @@ class SupStrategy(BaseStrategy):
             err = wer(sample["text"], trans[0])
             errs.append(err)
             transcriptions.append((sample["text"], trans[0]))
+
+            # loss
+            loss = self.system.calc_suta_loss([sample["wav"]])
+            ctc_loss = self.system.calc_ctc_loss([sample["wav"]], [sample["text"]])
+            loss["ctc_loss"] = ctc_loss["ctc_loss"]
+            losses.append(loss)
         
         return {
             "wers": errs,
             "n_words": n_words,
             "transcriptions": transcriptions,
+            "losses": losses,
+        }
+
+
+class OverfitStrategy(BaseStrategy):
+    def __init__(self, config) -> None:
+        self.config = config
+        self.system_config = config["config"]
+        self.system = SUTASystem(self.system_config)
+
+        self.queue = Queue(max_size=16)
+        self.bs = 4
+        self.gradient_accumulation_step = 4
+    
+    def sup_train(self, ds: Dataset):
+        dataloader = DataLoader(
+            ds,
+            batch_size=1,
+            num_workers=4,
+            shuffle=True,
+            collate_fn=lambda x: x
+        )
+        self.system.train()
+        n_iter = 25000 // len(ds)  # Default use 25000 step
+        for _ in tqdm(range(n_iter)):
+            for idx, sample in tqdm(enumerate(dataloader)):
+                sample = sample[0]
+                if len(sample["wav"]) <= 20 * 16000:
+                    self.queue.update(sample)
+                
+                if (idx + 1) % (self.bs * self.gradient_accumulation_step) == 0:
+                    record = {}
+                    self.system.ctc_adapt_auto(
+                        wavs=[s["wav"] for s in self.queue.data],
+                        texts=[s["text"] for s in self.queue.data], 
+                        record=record,
+                        batch_size=2
+                    )
+                    if record.get("collapse", False):
+                        print("oh no")
+                    
+        self.system.snapshot("sup_start")
+        os.makedirs(self.config["output_dir"]["ckpt_dir"], exist_ok=True)
+        self.system.save(f'{self.config["output_dir"]["ckpt_dir"]}/last.ckpt')
+
+    def run(self, ds: Dataset):
+        self.sup_train(ds)
+        self.system.adapt_count = 0
+        self.system.load_snapshot("sup_start")
+        self.system.eval()
+
+        n_words = []
+        errs, losses = [], []
+        transcriptions = []
+        for sample in tqdm(ds):
+            n_words.append(len(sample["text"].split(" ")))
+            trans = self.system.inference([sample["wav"]])
+            err = wer(sample["text"], trans[0])
+            errs.append(err)
+            transcriptions.append((sample["text"], trans[0]))
+
+            # loss
+            loss = self.system.calc_suta_loss([sample["wav"]])
+            ctc_loss = self.system.calc_ctc_loss([sample["wav"]], [sample["text"]])
+            loss["ctc_loss"] = ctc_loss["ctc_loss"]
+            losses.append(loss)
+        
+        return {
+            "wers": errs,
+            "n_words": n_words,
+            "transcriptions": transcriptions,
+            "losses": losses,
         }
 
 
@@ -201,7 +250,6 @@ class UnsupFilterStrategy(BaseStrategy):
                     record = {}
                     self.system.suta_adapt_auto(
                         wavs=[s["wav"] for s in self.queue.data],
-                        texts=[s["text"] for s in self.queue.data], 
                         record=record,
                         batch_size=self.bs
                     )

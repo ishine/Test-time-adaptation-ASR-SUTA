@@ -79,7 +79,7 @@ class SynthCorpus(object):
 
 class LibriSpeechCorpusOld(object):
 
-    cache_dir = "_cache/LibriSpeech"
+    cache_dir = "_cache/LibriSpeech_old"
 
     def __init__(self, extra_noise=0.0) -> None:
         self.extra_noise = extra_noise
@@ -578,3 +578,92 @@ class TEDCorpus(object):
         text = ' '.join(text.split())
         
         return text
+
+
+class SwitchBoardCorpus(object):
+
+    cache_dir = "_cache/switchboard"
+
+    def __init__(self, enhance=False, ascending=False):
+        if not os.path.exists(self.cache_dir):
+            self.parse(enhance, ascending)
+        with open(f"{self.cache_dir}/data_info.json", "r", encoding="utf-8") as f:
+            self.data_info = json.load(f)
+        
+        # Filter out long wavs > 20s
+        self.filtered_idxs = []
+        for idx, query in enumerate(self.data_info):
+            if query["length"] <= 20 * 16000:
+                self.filtered_idxs.append(idx)
+
+    def parse(self, enhance=False, ascending=False):
+        self.path = Define.SWBD
+        
+        split = ['']
+        apath = self.path + "/eval2000_wav_segment"
+        tpath = self.path + "/eval2000_transcription"
+
+        file_list = []
+        for s in split: 
+            if enhance: 
+                split_list = list(Path(os.path.join(os.path.join(apath, 'se_wav'), s)).glob("*.wav"))
+            else:  
+                split_list = list(Path(os.path.join(apath, s)).glob("*.wav"))
+            file_list += split_list
+        
+        text = []
+        filtered_file_list = []
+        for f in tqdm(file_list, desc='Read text'):
+            transcription = self.read_text(tpath, str(f))
+            # print(transcription)
+            if transcription == None: 
+                pass
+            elif len(transcription.split()) <= 3:
+                pass
+            else:
+                filtered_file_list.append(f)
+                text.append(transcription)
+
+        print(len(filtered_file_list), len(text))
+        file_list = filtered_file_list
+        self.file_list, self.text = zip(*[(f_name, txt)
+                                          for f_name, txt in sorted(zip(file_list, text), reverse=not ascending, key=lambda x:len(x[1]))])
+
+
+        data_info = []
+        for i in range(len(self.file_list)):
+            wav, _ = librosa.load(self.file_list[i], sr=16000)
+            data_info.append({
+                "basename": str(self.file_list[i]),
+                "length": len(wav),
+                "text": self.text[i],
+            })
+        os.makedirs(self.cache_dir, exist_ok=True)
+        with open(f"{self.cache_dir}/data_info.json", "w", encoding="utf-8") as f:
+            json.dump(data_info, f, indent=4)
+    
+    def read_text(self, tpath, file):
+        '''Get transcription of target wave file, 
+        it's somewhat redundant for accessing each txt multiplt times,
+        but it works fine with multi-thread'''
+        file = file.split('/')[-1].replace('wav', 'txt')
+        txt_list = os.path.join(tpath, file)
+
+        with open(txt_list, 'r') as fp:
+            for line in fp:
+                return line.strip('\n')
+
+    def __len__(self):
+        return len(self.filtered_idxs)
+    
+    def get(self, idx):
+        query = self.data_info[self.filtered_idxs[idx]]
+        basename = query['basename']
+        wav, _ = librosa.load(basename, sr=16000)
+        text = query['text']
+
+        return {
+            "id": basename,
+            "wav": wav,
+            "text": text
+        }

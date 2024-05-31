@@ -73,3 +73,23 @@ def pad_1D(inputs, PAD=0):
     padded = np.stack([pad_data(x, max_len, PAD) for x in inputs])
 
     return padded
+
+
+def unwrap_loss(loss_data):
+    """
+    Transform nested list of dict into dict of nested list, all dicts should have same keys.
+    This is a recursive implementation.
+    """
+    def _unwrap(data: list):
+        res = {}
+        for x in data:
+            if isinstance(x, list):  # not last level
+                unwrapped_x = _unwrap(x)
+            else:
+                unwrapped_x = x
+            for key in unwrapped_x:
+                if key not in res:
+                    res[key] = []
+                res[key].append(unwrapped_x[key])
+        return res
+    return _unwrap(loss_data)

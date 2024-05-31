@@ -9,6 +9,9 @@ from utils.tool import seed_everything
 from benchmark import get_strategy, get_task
 
 
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:256"  # https://stackoverflow.com/questions/73747731/runtimeerror-cuda-out-of-memory-how-can-i-set-max-split-size-mb
+
+
 def create_config(args):
     """ Create a dictionary for full configuration """
     res = {

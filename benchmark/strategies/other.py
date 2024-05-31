@@ -1,6 +1,8 @@
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
+from dlhlp_lib.utils.data_structure import Queue
+
 from .basic import BaseStrategy
 from systems.suta import SUTASystem
 from utils.tool import wer
@@ -363,3 +365,151 @@ class AdvancedStrategy(BaseStrategy):
 
     def get_adapt_count(self):
         return self.system.adapt_count
+
+
+class ExpStrategy(BaseStrategy):
+    """ experimental """
+    def __init__(self, config) -> None:
+        self.config = config
+        self.system_config = config["config"]
+        self.system = SUTASystem(self.system_config)
+        
+        self.slow_system = SUTASystem(self.system_config)
+        self.slow_system.snapshot("start")
+        self.system.snapshot("start")
+        self.timestep = 0
+        self.update_freq = config["strategy_config"]["update_freq"]
+        self.memory = Queue(max_size=config["strategy_config"]["memory"])
+        self.reset = config["strategy_config"].get("reset", False)
+
+    def _load_start_point(self, sample):
+        self.system.load_snapshot("start")
+
+    def _adapt(self, sample):
+        self.system.eval()
+        is_collapse = False
+        for _ in range(self.system_config["steps"]):
+            record = {}
+            self.system.suta_adapt(
+                wavs=[sample["wav"]],
+                record=record,
+            )
+            if record.get("collapse", False):
+                is_collapse = True
+        if is_collapse:
+            print("oh no")
+        # if len(sample["wav"]) <= 20 * 16000:
+        self.memory.update(sample)
+        self.timestep += 1
+    
+    def _update(self, sample):
+        if self.timestep % self.update_freq != 0:
+            return
+        self.slow_system.load_snapshot("start")
+        self.slow_system.eval()
+        is_collapse = False
+        record = {}
+        self.slow_system.suta_adapt_auto(
+            wavs=[s["wav"] for s in self.memory.data],
+            batch_size=1,
+            record=record,
+        )
+        if record.get("collapse", False):
+            is_collapse = True
+        if is_collapse:
+            print("oh no")
+        self.slow_system.snapshot("start")
+        self.system.history["start"] = self.slow_system.history["start"]  # fetch start point from slow system
+
+    def reset_strategy(self):
+        self.memory.clear()
+        self.slow_system.load_snapshot("init")
+        self.system.load_snapshot("init")
+        self.slow_system.snapshot("start")
+        self.system.snapshot("start")
+    
+    def _run_one_domain(self, ds: Dataset):
+        long_cnt = 0
+        for sample in tqdm(ds):
+            if len(sample["wav"]) > 20 * 16000:
+                long_cnt += 1
+                continue
+            # update
+            if self.timestep == 100:
+                break  # Stop after 1st domain
+            self._load_start_point(sample)
+            self._adapt(sample)
+            self._update(sample)
+
+        self.system.snapshot("run_one_domain_start")
+        print(long_cnt)
+
+    def run(self, ds: Dataset):
+        long_cnt = 0
+        n_words = []
+        errs, losses = [], []
+        transcriptions = []
+        for sample in tqdm(ds):
+            if len(sample["wav"]) > 20 * 16000:
+                long_cnt += 1
+                continue
+            n_words.append(len(sample["text"].split(" ")))
+
+            # update
+            if self.timestep < 100:  # only update when 1st domain
+                self._load_start_point(sample)
+                self._adapt(sample)
+                self._update(sample)
+
+            self.system.eval()
+            trans = self.system.inference([sample["wav"]])
+            err = wer(sample["text"], trans[0])
+            errs.append(err)
+            transcriptions.append((sample["text"], trans[0]))
+
+            # loss
+            loss = self.system.calc_suta_loss([sample["wav"]])
+            ctc_loss = self.system.calc_ctc_loss([sample["wav"]], [sample["text"]])
+            loss["ctc_loss"] = ctc_loss["ctc_loss"]
+            losses.append(loss)
+
+        print(long_cnt)
+        
+        return {
+            "wers": errs,
+            "n_words": n_words,
+            "transcriptions": transcriptions,
+            "losses": losses,
+        }
+    
+    # def run(self, ds: Dataset):
+    #     self._run_one_domain(ds)
+    #     self.system.adapt_count = 0
+    #     self.system.load_snapshot("run_one_domain_start")
+    #     self.system.eval()
+
+    #     n_words = []
+    #     errs, losses = [], []
+    #     transcriptions = []
+    #     for sample in tqdm(ds):
+    #         n_words.append(len(sample["text"].split(" ")))
+    #         trans = self.system.inference([sample["wav"]])
+    #         err = wer(sample["text"], trans[0])
+    #         errs.append(err)
+    #         transcriptions.append((sample["text"], trans[0]))
+
+    #         # loss
+    #         loss = self.system.calc_suta_loss([sample["wav"]])
+    #         ctc_loss = self.system.calc_ctc_loss([sample["wav"]], [sample["text"]])
+    #         loss["ctc_loss"] = ctc_loss["ctc_loss"]
+    #         losses.append(loss)
+        
+    #     return {
+    #         "wers": errs,
+    #         "n_words": n_words,
+    #         "transcriptions": transcriptions,
+    #         "losses": losses,
+    #     }
+        
+    def get_adapt_count(self):
+        return self.system.adapt_count + self.slow_system.adapt_count

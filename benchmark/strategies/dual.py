@@ -20,6 +20,7 @@ class DualStrategy(BaseStrategy):
         self.timestep = 0
         self.update_freq = config["strategy_config"]["update_freq"]
         self.memory = Queue(max_size=config["strategy_config"]["memory"])
+        self.reset = config["strategy_config"].get("reset", False)
 
     def _load_start_point(self, sample):
         self.system.load_snapshot("start")
@@ -37,8 +38,8 @@ class DualStrategy(BaseStrategy):
                 is_collapse = True
         if is_collapse:
             print("oh no")
-        if len(sample["wav"]) <= 15 * 16000:
-            self.memory.update(sample)
+        # if len(sample["wav"]) <= 20 * 16000:
+        self.memory.update(sample)
         self.timestep += 1
     
     def _update(self, sample):
@@ -48,8 +49,9 @@ class DualStrategy(BaseStrategy):
         self.slow_system.eval()
         is_collapse = False
         record = {}
-        self.slow_system.suta_adapt(
+        self.slow_system.suta_adapt_auto(
             wavs=[s["wav"] for s in self.memory.data],
+            batch_size=1,
             record=record,
         )
         if record.get("collapse", False):
@@ -59,6 +61,13 @@ class DualStrategy(BaseStrategy):
         self.slow_system.snapshot("start")
         self.system.history["start"] = self.slow_system.history["start"]  # fetch start point from slow system
 
+    def reset_strategy(self):
+        self.memory.clear()
+        self.slow_system.load_snapshot("init")
+        self.system.load_snapshot("init")
+        self.slow_system.snapshot("start")
+        self.system.snapshot("start")
+        
     def run(self, ds: Dataset):
         long_cnt = 0
         n_words = []
@@ -71,6 +80,9 @@ class DualStrategy(BaseStrategy):
             n_words.append(len(sample["text"].split(" ")))
 
             # update
+            if self.reset and self.timestep in ds.task_boundaries:
+                print("Reset at boundary...")
+                self.reset_strategy()
             self._load_start_point(sample)
             self._adapt(sample)
             self._update(sample)
@@ -80,6 +92,13 @@ class DualStrategy(BaseStrategy):
             err = wer(sample["text"], trans[0])
             errs.append(err)
             transcriptions.append((sample["text"], trans[0]))
+
+            # # loss
+            # loss = self.system.calc_suta_loss([sample["wav"]])
+            # ctc_loss = self.system.calc_ctc_loss([sample["wav"]], [sample["text"]])
+            # loss["ctc_loss"] = ctc_loss["ctc_loss"]
+            # losses.append(loss)
+
         print(long_cnt)
         
         return {
@@ -134,15 +153,15 @@ class DualPLStrategy(BaseStrategy):
             print("oh no")
         pl = self.system.inference([sample["wav"]])[0]
         anchor_pl = self.anchor.inference([sample["wav"]])[0]
-        if len(sample["wav"]) <= 15 * 16000:
-            self.memory.update({
-                "wav": sample["wav"],
-                "text": pl
-            })
-            self.memory.update({
-                "wav": sample["wav"],
-                "text": anchor_pl
-            })
+        # if len(sample["wav"]) <= 15 * 16000:
+        self.memory.update({
+            "wav": sample["wav"],
+            "text": pl
+        })
+        self.memory.update({
+            "wav": sample["wav"],
+            "text": anchor_pl
+        })
         self.timestep += 1
     
     def _update(self, sample):

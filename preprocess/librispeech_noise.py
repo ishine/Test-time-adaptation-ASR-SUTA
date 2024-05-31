@@ -11,17 +11,25 @@ import shutil
 def snr_mixer(clean, noise, snr):
     # Normalizing to -25 dB FS
     rmsclean = (clean**2).mean()**0.5
+    # print("clean(before): ", rmsclean)
     scalarclean = 10 ** (-25 / 20) / rmsclean
+    # print(scalarclean)
     clean = clean * scalarclean
     rmsclean = (clean**2).mean()**0.5
+    # print("clean(normalized): ", rmsclean)
 
     rmsnoise = (noise**2).mean()**0.5
+    # print("noise(before): ", rmsnoise)
     scalarnoise = 10 ** (-25 / 20) / rmsnoise
+    # print(scalarnoise)
     noise = noise * scalarnoise
     rmsnoise = (noise**2).mean()**0.5
+    # print("noise(normalized): ", rmsnoise)
+    # wavfile.write("normed_AC.wav", 16000, (noise * 32767).astype(np.int16))
     
     # Set the noise level for a given SNR
     noisescalar = rmsclean / (10**(snr/20)) / rmsnoise
+    # print(noisescalar)
     noisenewlevel = noise * noisescalar
     noisyspeech = clean + noisenewlevel
     return noisyspeech
@@ -101,6 +109,7 @@ def sythesize(noise_type: str, snr_level=10):
             noise = noise[0:len(clean_wav)]
 
         noisy_wav = snr_mixer(clean_wav, noise, snr=snr_level)
+        # assert 1 == 2
 
         wav_path = f"{output_dir}/wav/{query['basename']}.wav"
         text_path = f"{output_dir}/text/{query['basename']}.txt"
@@ -113,13 +122,13 @@ def sythesize(noise_type: str, snr_level=10):
 if __name__ == "__main__":
     np.random.seed(666)
     # libirspeech_preprocess()
-    # sythesize("GS", snr_level=10)
-    # sythesize("AC", snr_level=10)
-    sythesize("AA", snr_level=10)
-    sythesize("BA", snr_level=10)
-    sythesize("CM", snr_level=10)
-    sythesize("MU", snr_level=10)
-    sythesize("TP", snr_level=10)
-    sythesize("SD", snr_level=10)
-    sythesize("NB", snr_level=10)
-    sythesize("VC", snr_level=10)
+    sythesize("GS", snr_level=5)
+    # sythesize("AC", snr_level=5)
+    sythesize("AA", snr_level=5)
+    sythesize("BA", snr_level=5)
+    sythesize("CM", snr_level=5)
+    sythesize("MU", snr_level=5)
+    # sythesize("TP", snr_level=5)
+    # sythesize("SD", snr_level=5)
+    sythesize("NB", snr_level=5)
+    sythesize("VC", snr_level=5)

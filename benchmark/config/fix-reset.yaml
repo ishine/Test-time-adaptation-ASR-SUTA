@@ -1,0 +1,4 @@
+update_freq: 5
+memory: 5
+reset: fix
+patience: 2

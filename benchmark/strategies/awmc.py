@@ -28,6 +28,7 @@ class AWMCStrategy(BaseStrategy):
 
         self.ema_task_vector = None
         self.alpha = 0.999
+        self.opt_param_names = self.anchor.opt_param_names
 
         # log
         self.transcriptions = []
@@ -39,15 +40,20 @@ class AWMCStrategy(BaseStrategy):
 
         if self.ema_task_vector is None:
             self.ema_task_vector = {}
-            for name in origin_model_state:
+            for name in self.opt_param_names:
                 self.ema_task_vector[name] = (1 - self.alpha) * task_vector[name]
         else:
-            for name in origin_model_state:
+            for name in self.opt_param_names:
                 self.ema_task_vector[name] = self.alpha * self.ema_task_vector[name] + (1 - self.alpha) * task_vector[name]
         
-        merged_model_state = {
-            name: origin_model_state[name] + self.ema_task_vector[name]
-        for name in origin_model_state}
+        # add back to origin model
+        merged_model_state = {}
+        for name in origin_model_state:
+            if name in self.opt_param_names:
+                merged_model_state[name] = origin_model_state[name] + self.ema_task_vector[name]
+            else:
+                merged_model_state[name] = origin_model_state[name]
+
         self.leader.history["merged"] = (merged_model_state, None, None)
         self.leader.load_snapshot("merged")
 
@@ -60,7 +66,7 @@ class AWMCStrategy(BaseStrategy):
         origin_model_state = self.system.history["init"][0]
         task_vector = {
             name: model_state[name] - origin_model_state[name]
-        for name in model_state}
+        for name in self.opt_param_names}
         return task_vector
     
     def _update(self, sample):  # AWMC use PL instead of unsupervised objectives
@@ -71,9 +77,10 @@ class AWMCStrategy(BaseStrategy):
         for _ in range(self.system_config["steps"]):
             leader_pl_target = self.leader.inference([sample["wav"]])[0]
             record = {}
-            self.system.ctc_adapt(
+            self.system.ctc_adapt_auto(
                 wavs=[sample["wav"], sample["wav"]],
                 texts=[anchor_pl_target, leader_pl_target],
+                batch_size=1,
                 record=record
             )
             if record.get("collapse", False):

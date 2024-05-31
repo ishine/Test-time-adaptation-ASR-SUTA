@@ -2,10 +2,10 @@ from torch.utils.data import Dataset
 from typing import Type
 
 from .tasks import (
-    chime, esd, l2arctic, synth, librispeech, librispeech_c, commonvoice, ted
+    chime, esd, l2arctic, synth, librispeech, librispeech_c, commonvoice, ted, switchboard, l2arctic_speaker
 )
 from .strategies import (
-    basic, dynamic, other, batch, merge, awmc, cotta, dual, unsup
+    basic, dynamic, other, batch, merge, awmc, cotta, dual, unsup, general
 )
 
 
@@ -35,8 +35,12 @@ STRATEGY = {
     "ema-start": merge.EMAStartStrategy,
     "unsup": unsup.UnsupStrategy,
     "sup": unsup.SupStrategy,
+    "overfit": unsup.OverfitStrategy,
     
     "unsup-filter": unsup.UnsupFilterStrategy,
+    "experimental": other.ExpStrategy,
+
+    "ddr": general.DualDomainResetStrategy
 }
 
 
@@ -71,6 +75,19 @@ TASK = {
     "ted_random": ted.RandomSequence,
 
     "single": l2arctic.SingleAccentSequence,
+    "swbd": switchboard.RandomSequence,
+
+    "long1": librispeech_c.LongSequence1,
+    "long2": librispeech_c.LongSequence2,
+    "long3": librispeech_c.LongSequence3,
+    "long4": librispeech_c.LongSequence4,
+    "long5": librispeech_c.LongSequence5,
+    "long6": librispeech_c.LongSequence6,
+    "iid1": librispeech_c.LongIIDSequence1,
+    "iid2": librispeech_c.LongIIDSequence2,
+
+    "speaker1": l2arctic_speaker.RandomSequence1,
+    "speaker2": l2arctic_speaker.RandomSequence2,
 }
 
 
@@ -80,8 +97,12 @@ def get_strategy(name) -> Type[basic.BaseStrategy]:
 
 def get_task(name) -> Dataset:
     if name.startswith("LS_"):
-        noise_type = name.split("_")[1]
-        ds = librispeech_c.RandomSequence(noise_type, snr_level=10)
+        types = name.split("_")
+        noise_type = types[1]
+        snr_level = 10
+        if len(types) >= 3:
+            snr_level = int(types[2])
+        ds = librispeech_c.RandomSequence(noise_type, snr_level=snr_level)
         return ds
 
     return TASK[name]()

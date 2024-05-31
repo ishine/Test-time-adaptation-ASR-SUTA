@@ -24,7 +24,7 @@ class NoStrategy(BaseStrategy):
     def run(self, ds: Dataset):
         basenames = []
         n_words = []
-        errs = []
+        errs, losses = [], []
         transcriptions = []
         for sample in tqdm(ds):
             n_words.append(len(sample["text"].split(" ")))
@@ -33,12 +33,19 @@ class NoStrategy(BaseStrategy):
             errs.append(err)
             transcriptions.append((sample["text"], trans[0]))
             basenames.append(sample["id"])
+
+            # loss
+            loss = self.system.calc_suta_loss([sample["wav"]])
+            ctc_loss = self.system.calc_ctc_loss([sample["wav"]], [sample["text"]])
+            loss["ctc_loss"] = ctc_loss["ctc_loss"]
+            losses.append(loss)
         
         return {
             "wers": errs,
             "n_words": n_words,
             "transcriptions": transcriptions,
             "basenames": basenames,
+            "losses": losses,
         }
     
     def get_adapt_count(self):
@@ -85,14 +92,13 @@ class SUTAStrategy(BaseStrategy):
             err = wer(sample["text"], trans)
             errs.append(err)
             transcriptions.append((sample["text"], trans))
-            # loss = self.system.calc_loss(
-            #     [sample["wav"]],
-            #     em_coef=self.config["em_coef"],
-            #     reweight=self.config["reweight"],
-            #     temp=self.config["temp"],
-            #     not_blank=self.config["non_blank"]
-            # )
-            # losses.append(loss)
+            
+            # loss
+            loss = self.system.calc_suta_loss([sample["wav"]])
+            ctc_loss = self.system.calc_ctc_loss([sample["wav"]], [sample["text"]])
+            loss["ctc_loss"] = ctc_loss["ctc_loss"]
+            losses.append(loss)
+            
         print(long_cnt)
         
         return {
