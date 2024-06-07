@@ -96,7 +96,8 @@ class AWMCStrategy(BaseStrategy):
         n_words = []
         errs, losses = [], []
         transcriptions = []
-        task_boundaries = getattr(ds, "task_boundaries", [])
+        # task_boundaries = getattr(ds, "task_boundaries", [])
+        task_boundaries = []
         for idx, sample in tqdm(enumerate(ds), total=len(ds)):
             if len(sample["wav"]) > 20 * 16000:
                 long_cnt += 1
@@ -105,7 +106,7 @@ class AWMCStrategy(BaseStrategy):
             n_words.append(len(sample["text"].split(" ")))
 
             # update
-            if idx in task_boundaries:  # Original AWMC only test on single domain, therefore we should reset at task boundary
+            if idx in task_boundaries:  # Original AWMC only test on single domain
                 print("reset")
                 self.system.load_snapshot("init")
                 self.leader.load_snapshot("init")

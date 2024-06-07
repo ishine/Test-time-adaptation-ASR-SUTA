@@ -172,6 +172,107 @@ class LongSequence6(Dataset):
         return ConcatSequence(datasets, tid_seq, tidx_seq, task_boundaries=task_boundaries)
 
 
+class MDEASY1(Dataset):
+    def __new__(cls):
+        datasets = [
+            RandomSequence("AC", 5),
+            RandomSequence("CM", 5),
+            RandomSequence("TP", 5),
+            RandomSequence("AA", 5),
+            RandomSequence("SD", 5),
+        ]
+        tid_seq = []
+        for i in range(len(datasets)):
+            tid_seq.extend([i] * 500)
+        tidx_seq = list(range(500)) * 5
+        task_boundaries = [500 * i for i in range(1, 5)]
+
+        return ConcatSequence(datasets, tid_seq, tidx_seq, task_boundaries=task_boundaries)
+
+
+class MDEASY2(Dataset):
+    def __new__(cls):
+        datasets = [
+            RandomSequence("AC", 5),
+            RandomSequence("CM", 5),
+            RandomSequence("TP", 5),
+            RandomSequence("AA", 5),
+            RandomSequence("SD", 5),
+        ]
+        tid_seq = []
+        for i in range(len(datasets)):
+            tid_seq.extend([i] * 100)
+        tid_seq = tid_seq * 5
+
+        tidx_seq = []
+        st = 0
+        for _ in range(5):
+            tidx_seq.extend(list(range(st, st+100)) * 5)
+            st += 100
+        task_boundaries = [100 * i for i in range(1, 25)]
+        
+        return ConcatSequence(datasets, tid_seq, tidx_seq, task_boundaries=task_boundaries)
+    
+
+class MDEASY3(Dataset):
+    def __new__(cls):
+        datasets = [
+            RandomSequence("AC", 5),
+            RandomSequence("CM", 5),
+            RandomSequence("TP", 5),
+            RandomSequence("AA", 5),
+            RandomSequence("SD", 5),
+        ]
+        tid_seq = []
+        for i in range(len(datasets)):
+            tid_seq.extend([i] * 20)
+        tid_seq = tid_seq * 25
+
+        tidx_seq = []
+        st = 0
+        for _ in range(25):
+            tidx_seq.extend(list(range(st, st+20)) * 5)
+            st += 20
+        task_boundaries = [20 * i for i in range(1, 125)]
+
+        return ConcatSequence(datasets, tid_seq, tidx_seq, task_boundaries=task_boundaries)
+    
+
+class MDLong(Dataset):
+    def __new__(cls):
+        datasets = [
+            RandomSequence("AA", 5),
+            RandomSequence("AC", 5),
+            RandomSequence("BA", 5),
+            RandomSequence("CM", 5),
+            RandomSequence("GS", 5),
+            RandomSequence("MU", 5),
+            RandomSequence("NB", 5),
+            RandomSequence("SD", 5),
+            RandomSequence("TP", 5),
+            RandomSequence("VC", 5),
+        ]
+        record = []
+        tid_seq, tidx_seq = [], []
+        task_boundaries = []
+        while len(tid_seq) < 10000:
+            tid = random.choice(list(range(10)))
+            while tid_seq and tid == tid_seq[-1]:
+                tid = random.choice(list(range(10)))
+            l_seg = random.choice(list(range(20, 501)))
+            tid_seq.extend([tid] * l_seg)
+            idxs = random.sample(list(range(len(datasets[tid]))), k=l_seg)
+            tidx_seq.extend(idxs)
+            task_boundaries.append(len(tidx_seq))
+            record.append((tid, len(tidx_seq)))
+        tid_seq = tid_seq[:10000]
+        tidx_seq = tidx_seq[:10000]
+        task_boundaries[-1] = 10000
+        print(record)
+
+        return ConcatSequence(datasets, tid_seq, tidx_seq, task_boundaries=task_boundaries)
+
+
 class LongIIDSequence1(Dataset):
     def __init__(self):
         datasets = [

@@ -400,7 +400,6 @@ class ExpStrategy(BaseStrategy):
             print("oh no")
         # if len(sample["wav"]) <= 20 * 16000:
         self.memory.update(sample)
-        self.timestep += 1
     
     def _update(self, sample):
         if self.timestep % self.update_freq != 0:
@@ -455,11 +454,8 @@ class ExpStrategy(BaseStrategy):
                 continue
             n_words.append(len(sample["text"].split(" ")))
 
-            # update
-            if self.timestep < 100:  # only update when 1st domain
-                self._load_start_point(sample)
-                self._adapt(sample)
-                self._update(sample)
+            self._load_start_point(sample)
+            self._adapt(sample)
 
             self.system.eval()
             trans = self.system.inference([sample["wav"]])
@@ -472,6 +468,10 @@ class ExpStrategy(BaseStrategy):
             ctc_loss = self.system.calc_ctc_loss([sample["wav"]], [sample["text"]])
             loss["ctc_loss"] = ctc_loss["ctc_loss"]
             losses.append(loss)
+            
+            self.timestep += 1
+            if self.timestep <= 100:  # only update when 1st domain
+                self._update(sample)
 
         print(long_cnt)
         

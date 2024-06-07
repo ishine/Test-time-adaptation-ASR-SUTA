@@ -31,8 +31,8 @@ STRATEGY = {
     "cotta": cotta.CoTTAStrategy,
 
     "dual": dual.DualStrategy,
-    "dual-pl": dual.DualPLStrategy,
-    "ema-start": merge.EMAStartStrategy,
+    # "dual-pl": dual.DualPLStrategy,
+    # "ema-start": merge.EMAStartStrategy,
     "unsup": unsup.UnsupStrategy,
     "sup": unsup.SupStrategy,
     "overfit": unsup.OverfitStrategy,
@@ -85,6 +85,10 @@ TASK = {
     "long6": librispeech_c.LongSequence6,
     "iid1": librispeech_c.LongIIDSequence1,
     "iid2": librispeech_c.LongIIDSequence2,
+    "md_easy1": librispeech_c.MDEASY1,
+    "md_easy2": librispeech_c.MDEASY2,
+    "md_easy3": librispeech_c.MDEASY3,
+    "md_long": librispeech_c.MDLong,
 
     "speaker1": l2arctic_speaker.RandomSequence1,
     "speaker2": l2arctic_speaker.RandomSequence2,

@@ -94,10 +94,10 @@ class SUTAStrategy(BaseStrategy):
             transcriptions.append((sample["text"], trans))
             
             # loss
-            loss = self.system.calc_suta_loss([sample["wav"]])
-            ctc_loss = self.system.calc_ctc_loss([sample["wav"]], [sample["text"]])
-            loss["ctc_loss"] = ctc_loss["ctc_loss"]
-            losses.append(loss)
+            # loss = self.system.calc_suta_loss([sample["wav"]])
+            # ctc_loss = self.system.calc_ctc_loss([sample["wav"]], [sample["text"]])
+            # loss["ctc_loss"] = ctc_loss["ctc_loss"]
+            # losses.append(loss)
             
         print(long_cnt)
         
