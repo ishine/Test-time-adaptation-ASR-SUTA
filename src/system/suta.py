@@ -6,8 +6,7 @@ from transformers import HubertForCTC, Data2VecAudioForCTC
 from copy import deepcopy
 import json
 
-from dlhlp_lib.utils.generators import batchify
-
+from ..utils.tool import batchify
 from .loss import softmax_entropy, mcc_loss, div_loss
 
 
@@ -22,7 +21,6 @@ class SUTASystem(object):
 
         # load model and tokenizer
         self.processor = Wav2Vec2Processor.from_pretrained(config["model_name"], sampling_rate=SUTASystem.SAMPLE_RATE)
-        self.model = None
         
         # Model ablation
         if config["model_name"] == "facebook/data2vec-audio-base-960h":
@@ -30,9 +28,6 @@ class SUTASystem(object):
         elif config["model_name"] == "facebook/hubert-large-ls960-ft":
             self.model = HubertForCTC.from_pretrained(config["model_name"])
         else:
-            pass
-
-        if self.model is None:
             self.model = Wav2Vec2ForCTC.from_pretrained(config["model_name"])
         
         self.model.train()  # huggingface default loads with eval mode

@@ -17,7 +17,7 @@ class GaussianStatModel(object):
     def __init__(self, data: list[float]) -> None:
         self.mu = statistics.mean(data)
         self.std = statistics.stdev(data)
-        print(f"Gaussian model: mu={self.mu}, std={self.std}")
+        # print(f"Gaussian model: mu={self.mu}, std={self.std}")
     
     def get_prob(self, x: float, reduction: int=1) -> float:  # reduce variance by multiple sampling
         return scipy.stats.norm(self.mu, self.std / (reduction ** 0.5)).cdf(x)
@@ -34,7 +34,7 @@ class FixDomainExpert(object):
 
         # create stat (gaussian model)
         self.stat_model = None
-        self.domain_update_freq = 50
+        self.K = config["strategy_config"]["K"]
         self.domain_stats = []
         
         self.system.snapshot("start")
@@ -46,7 +46,6 @@ class FixDomainExpert(object):
         self.system.snapshot("init")
 
         self.stat_model = None
-        self.K = 100
         self.domain_stats = []
         self.system.snapshot("start")
     
@@ -325,7 +324,7 @@ class DualDomainResetStrategy(BaseStrategy):
             losses.append(loss)
 
             self.timestep += 1
-            self.expert.timestep = self.timestep  # synchronize time step
+            self.expert.timestep += 1  # synchronize time step
             self.update(sample)
         
         return {

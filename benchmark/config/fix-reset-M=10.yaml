@@ -1,5 +1,5 @@
-update_freq: 5
-memory: 5
+update_freq: 10
+memory: 10
 reset: fix
 patience: 2
 K: 100

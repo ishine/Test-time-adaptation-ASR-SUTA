@@ -178,10 +178,13 @@ class LibriSpeechCCorpus(object):
             self.data_info = json.load(f)
         
         # Filter out long wavs > 20s
+        # tt = 0
         self.filtered_idxs = []
         for idx, query in enumerate(self.data_info):
             if query["length"] <= 20 * 16000:
                 self.filtered_idxs.append(idx)
+                # tt += query["length"]
+        # print(tt / 16000 / 60)  # about 5hr
 
     def __len__(self):
         return len(self.filtered_idxs)
@@ -667,3 +670,7 @@ class SwitchBoardCorpus(object):
             "wav": wav,
             "text": text
         }
+
+
+if __name__ == "__main__":
+    corpus = LibriSpeechCCorpus(root=f"_cache/LibriSpeech-c/GS/snr=5")

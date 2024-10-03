@@ -38,7 +38,6 @@ class DualStrategy(BaseStrategy):
                 is_collapse = True
         if is_collapse:
             print("oh no")
-        self.timestep += 1
     
     def _update(self, sample):
         self.memory.update(sample)
