@@ -39,6 +39,7 @@ def get_task(name) -> Dataset:
         if len(types) == 3:
             snr_level = int(types[2])
         ds = librispeech_c.RandomSequence(noise_type, snr_level=snr_level)
+        # ds = librispeech_c.RandomSequence(noise_type, snr_level=snr_level, repeat=4)
         return ds
     
     module_path, class_name = TASK_MAPPING[name]

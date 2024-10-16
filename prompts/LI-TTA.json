@@ -1,0 +1,4 @@
+{
+    "description": "Template from LI-TTA.",
+    "prompt": "Please generate a correction of \"{transcription}\" considering the pronunciation and overall context.\n"
+}

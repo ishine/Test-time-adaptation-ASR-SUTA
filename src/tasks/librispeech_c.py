@@ -5,15 +5,18 @@ from ..corpus.corpus import LibriSpeechCCorpus
 
 
 class RandomSequence(Dataset):
-    def __init__(self, noise_type: str, snr_level=10) -> None:
+    def __init__(self, noise_type: str, snr_level=10, repeat: int=1) -> None:
         root = f"_cache/LibriSpeech-c/{noise_type}/snr={snr_level}"
         self.corpus = LibriSpeechCCorpus(root=root)
-        self.idx_seq = list(range(len(self.corpus)))
+        self.idx_seq = []
+        for _ in range(repeat):
+            tmp = list(range(len(self.corpus)))
+            random.shuffle(tmp)
+            self.idx_seq.extend(tmp)
         self.task_boundaries = []
-        random.shuffle(self.idx_seq)
 
     def __len__(self):
-        return len(self.corpus)
+        return len(self.idx_seq)
     
     def __getitem__(self, idx):
         return self.corpus.get(self.idx_seq[idx])

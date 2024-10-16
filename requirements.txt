@@ -6,3 +6,4 @@ torchaudio
 soundfile
 matplotlib
 datasets
+openai

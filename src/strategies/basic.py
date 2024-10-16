@@ -20,6 +20,7 @@ class NoStrategy(IStrategy):
         n_words = []
         errs, losses = [], []
         transcriptions = []
+        logits = []
         for sample in tqdm(ds):
             if len(sample["wav"]) > self.strategy_config["max_length"]:
                 long_cnt += 1
@@ -32,10 +33,12 @@ class NoStrategy(IStrategy):
             basenames.append(sample["id"])
 
             # loss
-            # loss = self.system.calc_suta_loss([sample["wav"]])
-            # ctc_loss = self.system.calc_ctc_loss([sample["wav"]], [sample["text"]])
-            # loss["ctc_loss"] = ctc_loss["ctc_loss"]
-            # losses.append(loss)
+            loss = self.system.calc_suta_loss([sample["wav"]])
+            ctc_loss = self.system.calc_ctc_loss([sample["wav"]], [sample["text"]])
+            loss["ctc_loss"] = ctc_loss["ctc_loss"]
+            losses.append(loss)
+
+            logits.append(self.system.calc_logits([sample["wav"]])[0])
         
         print("#Too long: ", long_cnt)
         
@@ -45,6 +48,7 @@ class NoStrategy(IStrategy):
             "transcriptions": transcriptions,
             "basenames": basenames,
             "losses": losses,
+            "logits": logits,
         }
     
     def get_adapt_count(self):
@@ -83,6 +87,7 @@ class SUTAStrategy(IStrategy):
         n_words = []
         errs, losses = [], []
         transcriptions = []
+        logits = []
         for sample in tqdm(ds):
             if len(sample["wav"]) > self.strategy_config["max_length"]:
                 long_cnt += 1
@@ -99,10 +104,12 @@ class SUTAStrategy(IStrategy):
             transcriptions.append((sample["text"], trans))
             
             # loss
-            # loss = self.system.calc_suta_loss([sample["wav"]])
-            # ctc_loss = self.system.calc_ctc_loss([sample["wav"]], [sample["text"]])
-            # loss["ctc_loss"] = ctc_loss["ctc_loss"]
-            # losses.append(loss)
+            loss = self.system.calc_suta_loss([sample["wav"]])
+            ctc_loss = self.system.calc_ctc_loss([sample["wav"]], [sample["text"]])
+            loss["ctc_loss"] = ctc_loss["ctc_loss"]
+            losses.append(loss)
+
+            logits.append(self.system.calc_logits([sample["wav"]])[0])
 
             self._update(sample)
             
@@ -113,6 +120,7 @@ class SUTAStrategy(IStrategy):
             "n_words": n_words,
             "transcriptions": transcriptions,
             "losses": losses,
+            "logits": logits,
         }
     
     def get_adapt_count(self):

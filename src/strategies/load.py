@@ -19,14 +19,25 @@ DSUTA = {
     "dsuta-reset": (f"{SRC_DIR}/dsuta_reset.py", "DSUTAResetStrategy"),
 }
 
+EC = {
+    "rescore": (f"{SRC_DIR}/error_correction.py", "RescoreStrategy"),
+    "LLM": (f"{SRC_DIR}/error_correction.py", "LLMStrategy"),
+}
+
 OTHER = {
     "awmc": (f"{SRC_DIR}/awmc.py", "AWMCStrategy"),
+}
+
+EXP = {
+    "overfit": (f"{SRC_DIR}/upperbound.py", "OverfitStrategy"),
 }
 
 STRATEGY_MAPPING = {
     **BASIC,
     **DSUTA,
+    **EC,
     **OTHER,
+    **EXP,
 }
 
 

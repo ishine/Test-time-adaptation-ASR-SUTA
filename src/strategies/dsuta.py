@@ -87,10 +87,6 @@ class DSUTAStrategy(IStrategy):
                 continue
             n_words.append(len(sample["text"].split(" ")))
 
-            # update
-            # if self.reset and self.timestep in ds.task_boundaries:
-            #     print("Reset at boundary...")
-            #     self.reset_strategy()
             self._init_start(sample)
             self._adapt(sample)
 
@@ -100,11 +96,11 @@ class DSUTAStrategy(IStrategy):
             errs.append(err)
             transcriptions.append((sample["text"], trans[0]))
 
-            # # loss
-            # loss = self.system.calc_suta_loss([sample["wav"]])
-            # ctc_loss = self.system.calc_ctc_loss([sample["wav"]], [sample["text"]])
-            # loss["ctc_loss"] = ctc_loss["ctc_loss"]
-            # losses.append(loss)
+            # loss
+            loss = self.system.calc_suta_loss([sample["wav"]])
+            ctc_loss = self.system.calc_ctc_loss([sample["wav"]], [sample["text"]])
+            loss["ctc_loss"] = ctc_loss["ctc_loss"]
+            losses.append(loss)
 
             self._update(sample)
             self.timestep += 1

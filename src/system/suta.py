@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
+from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor, Wav2Vec2ProcessorWithLM
 from transformers import HubertForCTC, Data2VecAudioForCTC
 from copy import deepcopy
 import json
@@ -20,7 +20,10 @@ class SUTASystem(object):
         self.adapt_count = 0
 
         # load model and tokenizer
-        self.processor = Wav2Vec2Processor.from_pretrained(config["model_name"], sampling_rate=SUTASystem.SAMPLE_RATE)
+        if config["model_name"] == "patrickvonplaten/wav2vec2-base-960h-4-gram":
+            self.processor = Wav2Vec2ProcessorWithLM.from_pretrained(config["model_name"])
+        else:
+            self.processor = Wav2Vec2Processor.from_pretrained(config["model_name"], sampling_rate=SUTASystem.SAMPLE_RATE)
         
         # Model ablation
         if config["model_name"] == "facebook/data2vec-audio-base-960h":
@@ -289,6 +292,16 @@ class SUTASystem(object):
         return list(transcription)
     
     @torch.no_grad()
+    def beam_inference(self, wavs, n_best=1):
+        """ Note that the underlying model should support beam search! """
+        inputs = self._wav_to_model_input(wavs)
+        logits = self.model(**inputs).logits
+        res = self.processor.batch_decode(logits.cpu().numpy(), n_best=n_best)
+        transcription = res.text
+        
+        return list(transcription)
+    
+    @torch.no_grad()
     def calc_suta_loss(self, wavs):
         record = {}
         self.suta_adapt_loss_only(wavs, record=record)
@@ -301,6 +314,15 @@ class SUTASystem(object):
         self.ctc_adapt_loss_only(wavs, texts, record=record)
         self.adapt_count -= 1
         return record
+
+    @torch.no_grad()
+    def calc_logits(self, wavs) -> np.ndarray:
+        inputs = self._wav_to_model_input(wavs)
+        # print(type(inputs))  # inputs belongs to a custom dict class defined in transformers, not tensor
+        inputs = inputs.to(device=self.model.device)
+        outputs = self.model(**inputs)
+        logits = outputs.logits.detach().cpu().numpy()
+        return logits
 
     def snapshot(self, key: str):
         """Copy the model and optimizer states for resetting after adaptation."""

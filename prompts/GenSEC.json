@@ -1,0 +1,5 @@
+{
+    "description": "Template from PostASR-Correction-SLT2024.",
+    "system_prompt": "You need to do language model rescoring in ASR. Given the 5-best hypotheses, you need to report the true transcription from the 5-best hypotheses.",
+    "prompt": "The 5-best hypothesis is: {5best}\n\nThe true transcription from the 5-best hypotheses is: ??\n\nFill in the question marks and return the complete result like this example: The true transcription from the 5-best hypotheses is: \"\""
+}
