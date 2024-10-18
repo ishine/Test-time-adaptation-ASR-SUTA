@@ -22,11 +22,22 @@ BASIC = {
     "chime_random": (f"{SRC_DIR}/chime.py", "RandomSequence"),
     "chime_real": (f"{SRC_DIR}/chime.py", "UniqueRealSequence"),
     "chime_simu": (f"{SRC_DIR}/chime.py", "UniqueSimuSequence"),
+
+    "ted_random": (f"{SRC_DIR}/ted.py", "RandomSequence"),
+}
+
+EXP = {
+    "accent0": (f"{SRC_DIR}/l2arctic.py", "SingleAccentSequence"),
+    "accent0-n": (f"{SRC_DIR}/l2arctic.py", "NoisySingleAccentSequence"),
+    "accent1": (f"{SRC_DIR}/l2arctic.py", "SingleAccentSequence"),
+    "accent1-n": (f"{SRC_DIR}/l2arctic.py", "NoisySingleAccentSequence"),
+    "speaker0": (f"{SRC_DIR}/l2arctic.py", "SingleSpeakerSequence"),
 }
 
 TASK_MAPPING = {
     **BASIC,
     **MULTIDOMAIN,
+    **EXP,
 }
 
 

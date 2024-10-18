@@ -1,0 +1,5 @@
+{
+    "description": "Template from PostASR-Correction-SLT2024.",
+    "system_prompt": "The task is to correct the error of the speech recognition result. Given the 5-best hypotheses {{5-best hypotheses}}, consider the pronunciation and overall context and correct the transcription.",
+    "prompt": "{{5-best hypotheses}}:\n{5best}\n\nReturn the corrected transcription in this format: The corrected transcription is: {{corrected transcription}}."
+}

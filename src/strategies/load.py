@@ -22,6 +22,7 @@ DSUTA = {
 EC = {
     "rescore": (f"{SRC_DIR}/error_correction.py", "RescoreStrategy"),
     "LLM": (f"{SRC_DIR}/error_correction.py", "LLMStrategy"),
+    "aLLM": (f"{SRC_DIR}/error_correction.py", "AsyncLLMStrategy"),
 }
 
 OTHER = {

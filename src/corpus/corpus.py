@@ -177,7 +177,7 @@ class CommonVoiceCorpus(object):
     def __len__(self):
         return len(self.wav_paths)
     
-    def get(self, idx) -> np.ndarray:
+    def get(self, idx) -> dict:
         wav, _ = librosa.load(self.wav_paths[idx], sr=16000)
         text = preprocess_text(self.texts[idx])
 
@@ -242,9 +242,10 @@ class TEDCorpus(object):
     def __len__(self):
         return len(self.wav_paths)
     
-    def get(self, idx) -> np.ndarray:
+    def get(self, idx) -> dict:
         wav, _ = librosa.load(self.wav_paths[idx], sr=16000)
         text = preprocess_text(self.texts[idx])
+        text = text.replace(" '", "'")
 
         return {
             "id": self.wav_paths[idx],
@@ -253,63 +254,73 @@ class TEDCorpus(object):
         }
 
 
-
 class L2ArcticCorpus(object):
+
+    EXCEPTIONS = {
+        "ABA": ["arctic_a0158", "arctic_b0013", "arctic_b0398"],
+        "ASI": ["arctic_b0013"],
+        "BWC": ["arctic_b0013", "arctic_b0345"],
+        "EBVS": ["arctic_b0408"],
+        "HJK": ["arctic_b0013"],
+        "HKK": ["arctic_b0013"],
+        "LXC": ["arctic_b0013"],
+        "NCC": ["arctic_b0013"],
+        "NJS": ["arctic_b0013"],
+        "RRBI": ["arctic_a0298", "arctic_b0013"],
+        "SKA": ["arctic_b0358"],
+        "TNI": ["arctic_b0013"],
+        "YBAA": ["arctic_a0094", "arctic_b0013"],
+        "YDCK": ["arctic_b0013"],
+        "YKWK": ["arctic_b0013"],
+    }
+
     def __init__(self) -> None:
         self.root = Define.L2ARCTIC
-        self.n_per_spk = 50
         self._init_info()
 
     def _init_info(self):
-        self.accent2str = []
+        self.accents = []
+        self.accent2spks = {}
+        self.spk2accent = {}
         self.spks = []
         for accent in os.listdir(self.root):
             if not os.path.isdir(f"{self.root}/{accent}"):
                 continue
+            self.accents.append(accent)
+            self.accent2spks[accent] = []
             for spk in os.listdir(f"{self.root}/{accent}"):
-                self.spks.append(f"{accent}/{spk}")
-            self.accent2str.append(accent)
-        self.accent2str = {i: x for i, x in enumerate(self.accent2str)}
-
-        self.texts = []
-        for i in range(self.n_per_spk):
-            if i == 12 or i == 93:  # exception
-                with open(f"{self.root}/Arabic/ABA/transcript/arctic_a{i+101:04d}.txt", 'r') as f:
-                    text = f.read()
-            else:
-                with open(f"{self.root}/Arabic/ABA/transcript/arctic_a{i+1:04d}.txt", 'r') as f:
-                    text = f.read()
-            self.texts.append(text.strip())
+                self.spks.append(spk)
+                self.accent2spks[accent].append(spk)
+                self.spk2accent[spk] = accent
         assert len(self.spks) == 24
-        assert len(self.texts) == self.n_per_spk
-        # print(self.accent2str)
 
-    def __len__(self):
-        return self.n_per_spk * 24
+        self.spk2files = {}
+        for spk in self.spks:
+            files = []
+            accent = self.spk2accent[spk]
+            spk_root = f"{self.root}/{accent}/{spk}"
+            for basename in os.listdir(f"{spk_root}/transcript"):
+                basename = basename[:-4]
+                if spk in L2ArcticCorpus.EXCEPTIONS and basename in L2ArcticCorpus.EXCEPTIONS[spk]:
+                    continue
+                files.append({
+                    "wav_path": f"{spk_root}/wav/{basename}.wav",
+                    "text_path": f"{spk_root}/transcript/{basename}.txt"
+                })
+            self.spk2files[spk] = files
 
-    def get_from_idxs(self, speaker_idx, content_idx) -> np.ndarray:
-        if content_idx == 12 or content_idx == 93:  # exception
-            basename = f"arctic_a{content_idx+101:04d}"
-        else:
-            basename = f"arctic_a{content_idx+1:04d}"
-        wav_path = f"{self.root}/{self.spks[speaker_idx]}/wav/{basename}.wav"
-        wav, _ = librosa.load(wav_path, sr=16000)
-        text = self.texts[content_idx]
+    def get(self, spk: str, idx: int) -> dict:
+        q = self.spk2files[spk][idx]
+        wav, _ = librosa.load(q["wav_path"], sr=16000)
+        with open(q["text_path"], 'r') as f:
+            text = f.read()
+        text = preprocess_text(text)
+
         return {
+            "id": q["wav_path"],
             "wav": wav,
             "text": text
         }
-
-    def idx_transform(self, idx: int):
-        assert idx < self.__len__()
-        res = [0, 0]
-        res[1] = idx % self.n_per_spk
-        idx = idx // self.n_per_spk
-        res[0] = idx
-        return res
-
-    def get(self, idx) -> np.ndarray:
-        return self.get_from_idxs(*self.idx_transform(idx))
 
 
 if __name__ == "__main__":
