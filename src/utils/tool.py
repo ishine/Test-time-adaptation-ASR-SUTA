@@ -33,6 +33,26 @@ def batchify(data, batch_size, shuffle=False):
         yield batch_data
 
 
+def call_llm_OpenAI(client, model_name, msg, max_retries=5, timeout=5):
+    retry_count = 0
+    while retry_count < max_retries:
+        try:
+            # Make the OpenAI ChatCompletion API call
+            res = client.chat.completions.create(
+                model=model_name,
+                messages=msg,
+                temperature=0,
+                timeout=timeout,
+            )
+            return res
+        except Exception as e:
+            print(f"Error: {e}. Retrying... ({retry_count+1}/{max_retries})")
+        
+        # Increment retry counter
+        retry_count += 1
+    return res if retry_count < max_retries else None
+
+
 async def call_llm_AsyncOpenAI(client, model_name, msg, max_retries=5, timeout=5):
     retry_count = 0
     while retry_count < max_retries:

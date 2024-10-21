@@ -25,6 +25,12 @@ EC = {
     "aLLM": (f"{SRC_DIR}/error_correction.py", "AsyncLLMStrategy"),
 }
 
+MIX = {
+    "suta-rescore": (f"{SRC_DIR}/mix/suta.py", "SUTARescoreStrategy"),
+    "suta-LLM": (f"{SRC_DIR}/mix/suta.py", "SUTALLMStrategy"),
+    "suta-aLLM": (f"{SRC_DIR}/mix/suta.py", "SUTALLMStrategy"),
+}
+
 OTHER = {
     "awmc": (f"{SRC_DIR}/awmc.py", "AWMCStrategy"),
 }
@@ -37,6 +43,7 @@ STRATEGY_MAPPING = {
     **BASIC,
     **DSUTA,
     **EC,
+    **MIX,
     **OTHER,
     **EXP,
 }
