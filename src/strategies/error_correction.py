@@ -9,7 +9,7 @@ from tqdm.asyncio import tqdm_asyncio
 
 from ..system.suta import SUTASystem
 from ..utils.async_request import OrderPreservedAsyncRequestHandler
-from ..utils.tool import wer, call_llm_AsyncOpenAI
+from ..utils.tool import wer, call_llm_AsyncOpenAI, call_llm_OpenAI
 from ..utils.prompter import Prompter
 from .base import IStrategy
 
@@ -31,7 +31,9 @@ class RescoreStrategy(IStrategy):
                 long_cnt += 1
                 continue
             self._log["n_words"].append(len(sample["text"].split(" ")))
-            trans = self.system.beam_inference([sample["wav"]], n_best=1)[0]
+            nbest_trans = self.system.beam_inference([sample["wav"]], n_best=5)[0]
+            self._log["nbest_trans"].append(nbest_trans)
+            trans = nbest_trans[0]
             err = wer(sample["text"], trans)
             self._log["wers"].append(err)
             self._log["transcriptions"].append((sample["text"], trans))
@@ -70,7 +72,7 @@ class LLMStrategy(IStrategy):
         f = open('vocab.json')
         self.vocab = json.load(f)
 
-    def inference(self, sample) -> str:
+    def inference_old(self, sample) -> str:
         nbest_trans = self.system.beam_inference([sample["wav"]], n_best=5)[0]
         msg = []
         if "system_prompt" in self.prompter.template:
@@ -103,6 +105,41 @@ class LLMStrategy(IStrategy):
         # print(trans)
         return trans
 
+    def _parse_res(self, res) -> str:
+        llm_response = res.choices[0].message.content
+        self._log["LLM"].append(llm_response)
+        # print(res)
+
+        # normalize
+        prefix = "The corrected transcription is: "  # v0
+        idx = llm_response.find(prefix)
+        try:
+            assert idx >= 0
+            ans = llm_response[idx+len(prefix):].strip().upper()
+            trans = ""
+            for c in ans:
+                if c == " " or c in self.vocab:
+                    trans += c
+            return trans
+        except:
+            print(f"LLM format error: {llm_response}")
+            raise
+    
+    def inference(self, sample) -> str:
+        self.system.eval()
+        nbest_trans = self.system.beam_inference([sample["wav"]], n_best=5)[0]
+        msg = []
+        if "system_prompt" in self.prompter.template:
+            msg.append({"role": "system", "content": self.prompter.template['system_prompt']})
+        msg.append({"role": "user", "content": self.prompter.generate_prompt({"5best": '\n'.join(nbest_trans)})})
+        
+        res = call_llm_OpenAI(self.llm_client, model_name="gpt-3.5-turbo-0125", msg=msg, max_retries=5)
+        try:
+            trans = self._parse_res(res)
+        except:
+            trans = nbest_trans[0]
+        return trans
+    
     def run(self, ds: Dataset):
         long_cnt = 0
         self._log = defaultdict(list)

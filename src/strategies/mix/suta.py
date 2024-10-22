@@ -45,7 +45,9 @@ class SUTARescoreStrategy(IStrategy):
     
     def inference(self, sample) -> str:
         self.system.eval()
-        return self.system.beam_inference([sample["wav"]], n_best=1)[0]
+        nbest_trans = self.system.beam_inference([sample["wav"]], n_best=5)[0]
+        self._log["nbest_trans"].append(nbest_trans)
+        return nbest_trans[0]
 
     def run(self, ds: Dataset):
         long_cnt = 0
@@ -137,6 +139,7 @@ class SUTALLMStrategy(IStrategy):
             return trans
         except:
             print(f"LLM format error: {llm_response}")
+            raise
     
     def inference(self, sample) -> str:
         self.system.eval()

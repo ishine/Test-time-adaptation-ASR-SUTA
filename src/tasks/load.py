@@ -26,6 +26,15 @@ BASIC = {
     "ted_random": (f"{SRC_DIR}/ted.py", "RandomSequence"),
 }
 
+CV_ACCENT = {
+    "cv-aus": (f"{SRC_DIR}/commonvoice.py", "AUSSequence"),
+    "cv-eng": (f"{SRC_DIR}/commonvoice.py", "ENGSequence"),
+    "cv-ind": (f"{SRC_DIR}/commonvoice.py", "INDSequence"),
+    "cv-ire": (f"{SRC_DIR}/commonvoice.py", "IRESequence"),
+    "cv-sco": (f"{SRC_DIR}/commonvoice.py", "SCOSequence"),
+    "cv-us": (f"{SRC_DIR}/commonvoice.py", "USSequence"),
+}
+
 EXP = {
     "accent0": (f"{SRC_DIR}/l2arctic.py", "SingleAccentSequence"),
     "accent0-n": (f"{SRC_DIR}/l2arctic.py", "NoisySingleAccentSequence"),
@@ -37,6 +46,7 @@ EXP = {
 TASK_MAPPING = {
     **BASIC,
     **MULTIDOMAIN,
+    **CV_ACCENT,
     **EXP,
 }
 
@@ -51,6 +61,15 @@ def get_task(name) -> Dataset:
             snr_level = int(types[2])
         ds = librispeech_c.RandomSequence(noise_type, snr_level=snr_level)
         # ds = librispeech_c.RandomSequence(noise_type, snr_level=snr_level, repeat=4)
+        return ds
+    
+    if name.startswith("L2_"):  # e.g. L2_Korean_AA_5
+        from . import l2arctic_c
+        types = name.split("_")
+        accent = types[1]
+        noise_type = types[2]
+        snr_level = int(types[3])
+        ds = l2arctic_c.SingleAccentSequence(accent, noise_type, snr_level=snr_level)
         return ds
     
     module_path, class_name = TASK_MAPPING[name]

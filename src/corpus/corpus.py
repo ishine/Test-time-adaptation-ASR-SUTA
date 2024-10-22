@@ -130,49 +130,20 @@ def preprocess_text(text):
     return text
 
 
-class CommonVoiceCorpus(object):
-
-    cache_dir = "_cache/CommonVoice"
-
-    def __init__(self, partial=True) -> None:
-        if not os.path.exists(self.cache_dir):
-            self.parse()
-        with open(f"{self.cache_dir}/data_info.json", "r", encoding="utf-8") as f:
-            basenames = json.load(f)
+class StandardCorpus(object):
+    def __init__(self, root: str) -> None:
+        assert os.path.exists(root), f"Can't find {root}, please run preprocess first!"
+        with open(f"{root}/data_info.json", "r", encoding="utf-8") as f:
+            data_info = json.load(f)
         self.wav_paths = []
         self.texts = []
-        if partial:
-            basenames = basenames[:5000]
-        for basename in basenames:
-            with open(f"{self.cache_dir}/text/{basename}.txt", "r", encoding="utf-8") as f:
+        
+        for instance in data_info:
+            basename = instance["basename"]
+            with open(f"{root}/text/{basename}.txt", "r", encoding="utf-8") as f:
                 text = f.read()
                 self.texts.append(text.strip())
-            self.wav_paths.append(f"{self.cache_dir}/wav/{basename}.wav")
-
-    def parse(self):
-        basenames = []
-        src_dataset = load_dataset(
-            "mozilla-foundation/common_voice_16_1",
-            "en",
-            split="test",
-            streaming=True,
-            use_auth_token=True,
-            trust_remote_code=True
-        )
-        os.makedirs(f"{self.cache_dir}/wav", exist_ok=True)
-        os.makedirs(f"{self.cache_dir}/text", exist_ok=True)
-        for idx, instance in tqdm(enumerate(src_dataset)):
-            wav = librosa.resample(
-                instance["audio"]["array"],
-                orig_sr=src_dataset.features["audio"].sampling_rate,
-                target_sr=16000
-            )
-            wavfile.write(f"{self.cache_dir}/wav/{idx:07d}.wav", 16000, (wav * 32767).astype(np.int16))
-            with open(f"{self.cache_dir}/text/{idx:07d}.txt", "w", encoding="utf-8") as f:
-                f.write(instance["sentence"])
-            basenames.append(f"{idx:07d}")
-        with open(f"{self.cache_dir}/data_info.json", "w", encoding="utf-8") as f:
-            json.dump(basenames, f, indent=4)
+            self.wav_paths.append(f"{root}/wav/{basename}.wav")
 
     def __len__(self):
         return len(self.wav_paths)
