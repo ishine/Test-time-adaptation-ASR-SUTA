@@ -1,0 +1,5 @@
+{
+    "description": "Our template, refer to previous works.",
+    "system_prompt": "The task is to correct the error of the speech recognition result. Given the n-best hypotheses {{n-best hypotheses}}, consider the pronunciation and overall context and correct the transcription.",
+    "prompt": "{{n-best hypotheses}}:\n{nbest}\n\nReturn the corrected transcription in this format: The corrected transcription is: {{corrected transcription}}."
+}

@@ -63,13 +63,18 @@ def get_task(name) -> Dataset:
         # ds = librispeech_c.RandomSequence(noise_type, snr_level=snr_level, repeat=4)
         return ds
     
-    if name.startswith("L2_"):  # e.g. L2_Korean_AA_5
-        from . import l2arctic_c
+    if name.startswith("L2_"):  # e.g. L2_Korean, L2_Korean_AA_5
         types = name.split("_")
-        accent = types[1]
-        noise_type = types[2]
-        snr_level = int(types[3])
-        ds = l2arctic_c.SingleAccentSequence(accent, noise_type, snr_level=snr_level)
+        if len(types) == 2:
+            from . import l2arctic
+            accent = types[1]
+            ds = l2arctic.SingleAccentSequence(accent)
+        else:
+            from . import l2arctic_c
+            accent = types[1]
+            noise_type = types[2]
+            snr_level = int(types[3])
+            ds = l2arctic_c.SingleAccentSequence(accent, noise_type, snr_level=snr_level)
         return ds
     
     module_path, class_name = TASK_MAPPING[name]

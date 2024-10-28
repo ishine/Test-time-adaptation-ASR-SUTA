@@ -22,13 +22,12 @@ DSUTA = {
 EC = {
     "rescore": (f"{SRC_DIR}/error_correction.py", "RescoreStrategy"),
     "LLM": (f"{SRC_DIR}/error_correction.py", "LLMStrategy"),
-    "aLLM": (f"{SRC_DIR}/error_correction.py", "AsyncLLMStrategy"),
+    # "aLLM": (f"{SRC_DIR}/error_correction.py", "AsyncLLMStrategy"),
 }
 
 MIX = {
     "suta-rescore": (f"{SRC_DIR}/mix/suta.py", "SUTARescoreStrategy"),
     "suta-LLM": (f"{SRC_DIR}/mix/suta.py", "SUTALLMStrategy"),
-    "suta-aLLM": (f"{SRC_DIR}/mix/suta.py", "SUTALLMStrategy"),
 }
 
 OTHER = {
@@ -37,6 +36,10 @@ OTHER = {
 
 EXP = {
     "overfit": (f"{SRC_DIR}/upperbound.py", "OverfitStrategy"),
+    "v0": (f"{SRC_DIR}/mix/select.py", "V0Strategy"),
+    "v0-ppl": (f"{SRC_DIR}/mix/select.py", "V0PPLStrategy"),
+    "v0a": (f"{SRC_DIR}/mix/select.py", "V0AStrategy"),
+    "v1": (f"{SRC_DIR}/mix/select.py", "V1Strategy"),
 }
 
 STRATEGY_MAPPING = {

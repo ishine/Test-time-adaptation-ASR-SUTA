@@ -12,6 +12,7 @@ from ..utils.async_request import OrderPreservedAsyncRequestHandler
 from ..utils.tool import wer, call_llm_AsyncOpenAI, call_llm_OpenAI
 from ..utils.prompter import Prompter
 from .base import IStrategy
+from visplot.utils import load_results
 
 
 class RescoreStrategy(IStrategy):
@@ -23,17 +24,27 @@ class RescoreStrategy(IStrategy):
 
         self._log = None
     
+    def inference(self, sample) -> str:
+        res = self.system.beam_inference([sample["wav"]], n_best=5, text_only=False)
+        merged_score = list(res.lm_score)[0]
+        self._log["merged_score"].append(merged_score)
+        nbest_trans = list(res.text)[0]
+        self._log["nbest_trans"].append(nbest_trans)  # not exactly n results due to deduplication
+        # if len(nbest_trans) != 5:
+        #     print("Less than nbest: ", len(nbest_trans))
+        return nbest_trans[0]
+    
     def run(self, ds: Dataset):
         long_cnt = 0
+        r = 0
         self._log = defaultdict(list)
         for sample in tqdm(ds):
             if len(sample["wav"]) > self.strategy_config["max_length"]:
                 long_cnt += 1
                 continue
             self._log["n_words"].append(len(sample["text"].split(" ")))
-            nbest_trans = self.system.beam_inference([sample["wav"]], n_best=5)[0]
-            self._log["nbest_trans"].append(nbest_trans)
-            trans = nbest_trans[0]
+
+            trans = self.inference(sample)
             err = wer(sample["text"], trans)
             self._log["wers"].append(err)
             self._log["transcriptions"].append((sample["text"], trans))
@@ -46,13 +57,14 @@ class RescoreStrategy(IStrategy):
             self._log["losses"].append(loss)
 
             self._log["logits"].append(self.system.calc_logits([sample["wav"]])[0])
+            r += 1
             
         print("#Too long: ", long_cnt)
         
         return self._log
         
     def get_adapt_count(self):
-        return self.system.adapt_count
+        return 0
 
 
 class LLMStrategy(IStrategy):
@@ -64,51 +76,19 @@ class LLMStrategy(IStrategy):
         self._log = None
 
         # LLM setup
-        # self.prompter = Prompter("GenSEC")
-        self.prompter = Prompter("v0")
+        self.prompter = Prompter("nbest")
         self.llm_client = OpenAI(
             api_key=os.environ.get("OPENAI_API_KEY"),
         )
         f = open('vocab.json')
         self.vocab = json.load(f)
 
-    def inference_old(self, sample) -> str:
-        nbest_trans = self.system.beam_inference([sample["wav"]], n_best=5)[0]
-        msg = []
-        if "system_prompt" in self.prompter.template:
-            msg.append({"role": "system", "content": self.prompter.template['system_prompt']})
-        msg.append({"role": "user", "content": self.prompter.generate_prompt({"5best": '\n'.join(nbest_trans)})})
-        # print(msg)
-        res = self.llm_client.chat.completions.create(
-            model="gpt-3.5-turbo-0125",
-            messages=msg,
-            temperature=0,
-        )
-        llm_response = res.choices[0].message.content
-        self._log["LLM"].append(llm_response)
-        # print(res)
-
-        # normalize
-        # prefix = "The true transcription from the 5-best hypotheses is: "  # GenSEC
-        prefix = "The corrected transcription is: "  # v0
-        idx = llm_response.find(prefix)
-        try:
-            assert idx >= 0
-            ans = llm_response[idx+len(prefix):].strip().upper()
-            trans = ""
-            for c in ans:
-                if c == " " or c in self.vocab:
-                    trans += c
-        except:
-            print(f"LLM format error: {res}")
-            trans = nbest_trans[0]
-        # print(trans)
-        return trans
+        self.info = load_results(exp_root=f"rescore/benchmark/{self.config['task_name']}")
 
     def _parse_res(self, res) -> str:
         llm_response = res.choices[0].message.content
         self._log["LLM"].append(llm_response)
-        # print(res)
+        # print(llm_response)
 
         # normalize
         prefix = "The corrected transcription is: "  # v0
@@ -125,13 +105,14 @@ class LLMStrategy(IStrategy):
             print(f"LLM format error: {llm_response}")
             raise
     
-    def inference(self, sample) -> str:
+    def inference(self, idx: int) -> str:
         self.system.eval()
-        nbest_trans = self.system.beam_inference([sample["wav"]], n_best=5)[0]
+        nbest_trans = self.info["nbest_trans"][idx]
+        # nbest_trans = self.system.beam_inference([sample["wav"]], n_best=5)[0]
         msg = []
         if "system_prompt" in self.prompter.template:
             msg.append({"role": "system", "content": self.prompter.template['system_prompt']})
-        msg.append({"role": "user", "content": self.prompter.generate_prompt({"5best": '\n'.join(nbest_trans)})})
+        msg.append({"role": "user", "content": self.prompter.generate_prompt({"nbest": '\n'.join(nbest_trans)})})
         
         res = call_llm_OpenAI(self.llm_client, model_name="gpt-3.5-turbo-0125", msg=msg, max_retries=5)
         try:
@@ -143,14 +124,13 @@ class LLMStrategy(IStrategy):
     def run(self, ds: Dataset):
         long_cnt = 0
         self._log = defaultdict(list)
-        for sample in tqdm(ds):
+        for idx, sample in tqdm(enumerate(ds), total=len(ds)):
             if len(sample["wav"]) > self.strategy_config["max_length"]:
                 long_cnt += 1
                 continue
             self._log["n_words"].append(len(sample["text"].split(" ")))
 
-            self.system.eval()
-            trans = self.inference(sample)
+            trans = self.inference(idx - long_cnt)
             err = wer(sample["text"], trans)
             self._log["wers"].append(err)
             self._log["transcriptions"].append((sample["text"], trans))
@@ -169,7 +149,7 @@ class LLMStrategy(IStrategy):
         return self._log
     
     def get_adapt_count(self):
-        return self.system.adapt_count
+        return 0
 
 
 class AsyncLLMStrategy(IStrategy):

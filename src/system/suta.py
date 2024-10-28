@@ -292,11 +292,16 @@ class SUTASystem(object):
         return list(transcription)
     
     @torch.no_grad()
-    def beam_inference(self, wavs, n_best=1):
+    def beam_inference(self, wavs, n_best=1, text_only=True):
         """ Note that the underlying model should support beam search! """
         inputs = self._wav_to_model_input(wavs)
         logits = self.model(**inputs).logits
-        res = self.processor.batch_decode(logits.cpu().numpy(), n_best=n_best)
+        # CAUTION:
+        # See https://www.youtube.com/watch?v=mp7fHMTnK9A for definition of alpha and beta, and note that the defualt 
+        # value of beta is not 0, which includes word length penalty and therefore not pure LM score
+        res = self.processor.batch_decode(logits.cpu().numpy(), n_best=n_best, alpha=0.5, beta=0.0)
+        if not text_only:
+            return res
         transcription = res.text
         
         return list(transcription)

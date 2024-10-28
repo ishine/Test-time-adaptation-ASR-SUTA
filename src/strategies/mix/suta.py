@@ -2,16 +2,15 @@ import os
 from torch.utils.data import Dataset
 import yaml
 from tqdm import tqdm
-from openai import OpenAI, AsyncOpenAI
+from openai import OpenAI
 import json
 from collections import defaultdict
-from tqdm.asyncio import tqdm_asyncio
 
 from ...system.suta import SUTASystem
-from ...utils.async_request import OrderPreservedAsyncRequestHandler
-from ...utils.tool import wer, call_llm_AsyncOpenAI, call_llm_OpenAI
+from ...utils.tool import wer, call_llm_OpenAI
 from ...utils.prompter import Prompter
 from ..base import IStrategy
+from visplot.utils import load_results
 
 
 class SUTARescoreStrategy(IStrategy):
@@ -45,8 +44,11 @@ class SUTARescoreStrategy(IStrategy):
     
     def inference(self, sample) -> str:
         self.system.eval()
-        nbest_trans = self.system.beam_inference([sample["wav"]], n_best=5)[0]
-        self._log["nbest_trans"].append(nbest_trans)
+        res = self.system.beam_inference([sample["wav"]], n_best=5, text_only=False)
+        merged_score = list(res.lm_score)[0]
+        self._log["merged_score"].append(merged_score)
+        nbest_trans = list(res.text)[0]
+        self._log["nbest_trans"].append(nbest_trans)  # not exactly n results due to deduplication
         return nbest_trans[0]
 
     def run(self, ds: Dataset):
@@ -101,6 +103,8 @@ class SUTALLMStrategy(IStrategy):
         f = open('vocab.json')
         self.vocab = json.load(f)
 
+        self.info = load_results(exp_root=f"suta-rescore/benchmark/{self.config['task_name']}")
+
     def _init_start(self, sample) -> None:
         self.system.load_snapshot("init")
     
@@ -141,9 +145,10 @@ class SUTALLMStrategy(IStrategy):
             print(f"LLM format error: {llm_response}")
             raise
     
-    def inference(self, sample) -> str:
+    def inference(self, idx: int) -> str:
         self.system.eval()
-        nbest_trans = self.system.beam_inference([sample["wav"]], n_best=5)[0]
+        nbest_trans = self.info["nbest_trans"][idx]
+        # nbest_trans = self.system.beam_inference([sample["wav"]], n_best=5)[0]
         msg = []
         if "system_prompt" in self.prompter.template:
             msg.append({"role": "system", "content": self.prompter.template['system_prompt']})
@@ -159,7 +164,7 @@ class SUTALLMStrategy(IStrategy):
     def run(self, ds: Dataset):
         long_cnt = 0
         self._log = defaultdict(list)
-        for sample in tqdm(ds):
+        for idx, sample in tqdm(enumerate(ds), total=len(ds)):
             if len(sample["wav"]) > self.strategy_config["max_length"]:
                 long_cnt += 1
                 continue
@@ -168,7 +173,7 @@ class SUTALLMStrategy(IStrategy):
             self._init_start(sample)
             self._adapt(sample)
 
-            trans = self.inference(sample)
+            trans = self.inference(idx - long_cnt)
             err = wer(sample["text"], trans)
             self._log["wers"].append(err)
             self._log["transcriptions"].append((sample["text"], trans))

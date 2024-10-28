@@ -1,0 +1,5 @@
+{
+    "description": "Selection template.",
+    "system_prompt": "You're building an automatic speech recognition system. The task is to select the most reasonable transcription among the given transcriptions. Make sure not to generate any new transcriptions.",
+    "prompt": "{{Transcriptions}}:\n{transcriptions}\n\nReturn the answer in this format: The most reasonable transcription is: {{most reasonable transcription}}."
+}
