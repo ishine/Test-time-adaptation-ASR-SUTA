@@ -18,10 +18,9 @@ class Prompter(object):
             raise ValueError(f"Can't read {file_name}")
         with open(file_name) as fp:
             self.template = json.load(fp)
-        if self._verbose:
-            print(
-                f"Using prompt template {template_name}: {self.template['description']}"
-            )
+        print(
+            f"Using prompt template [{template_name}]: {self.template['description']}"
+        )
 
     def generate_prompt(self, input) -> str:
         res = self.template["prompt"].format(**input)

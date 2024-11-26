@@ -105,6 +105,83 @@ class SUTASystem(object):
                 l2_loss += torch.sum((param - orig_state_dict[name]) ** 2)
         return l2_loss
 
+    def mix_adapt(self, wavs, texts, record={}):
+        suta_record, ctc_record = {}, {}
+        suta_loss = self.suta_adapt_loss_only(wavs, record=suta_record)
+        ctc_loss = self.ctc_adapt_loss_only(wavs, texts, record=ctc_record)
+        record.update(suta_record)
+        record.update(ctc_record)
+        coeff =  suta_record["total_loss"] / (suta_record["total_loss"] + ctc_record["total_loss"])  # LI-TTA use an adaptive mixture
+        loss = suta_loss + coeff * ctc_loss
+        record["total_loss"] = loss.item()
+
+        loss.backward()
+        self.optimizer.step()
+        self.model.zero_grad()
+
+    def psuta_adapt(self, wavs, record={}, mode="partial"):
+        """
+        Single gradient step on batch of data.
+        Measure entropy of the model prediction, take gradients, and update params.
+        the index of <pad> in vocab is 0
+        Due to wav2vec2-base special design, attention mask is always none, so ctc input length is always the
+        full length, model should learn to output id=0 on the padded part of wav.
+        """
+        self.adapt_count += 1
+
+        inputs = self._wav_to_model_input(wavs)
+        # print(type(inputs))  # inputs belongs to a custom dict class defined in transformers, not tensor
+        inputs = inputs.to(device=self.model.device)
+        outputs = self.model(**inputs)
+        predicted_ids = torch.argmax(outputs.logits, dim=-1)
+
+        loss = 0
+        if self.config["em_coef"] > 0:
+            non_blank = torch.where(predicted_ids != 0, 1, 0).bool()
+            x = softmax_entropy(outputs.logits / self.config["temp"])
+            if mode == "partial":
+                confidence, _ = (outputs.logits.detach() / self.config["temp"]).softmax(dim=2).max(dim=-1)
+                binarized = (confidence <= 0.99).float()
+                # print(x.shape, binarized.shape)
+                x = x * binarized
+            else:
+                raise NotImplementedError
+            if self.config["non_blank"]:
+                x = x[non_blank]
+            if len(x) > 0:
+                e_loss = x.mean(0).mean()
+            else:
+                e_loss = torch.tensor(0, device=self.model.device)
+                record["collapse"] = True
+            loss += e_loss * self.config["em_coef"]
+            record["e_loss"] = e_loss.item()
+        
+        if 1 - self.config["em_coef"] > 0: 
+            c_loss = mcc_loss(outputs.logits / self.config["temp"], self.config["reweight"])
+            loss += c_loss * (1 - self.config["em_coef"])
+            record["c_loss"] = c_loss.item()
+
+        if self.config["div_coef"] > 0: 
+            d_loss = div_loss(outputs.logits, self.config["non_blank"]) 
+            loss += d_loss * self.config["div_coef"]
+            record["d_loss"] = d_loss.item()
+        
+        record["total_loss"] = loss.item()
+
+        if self.config["l2_coef"] > 0: 
+            l2_loss = self.l2_loss()
+            loss += l2_loss * self.config["l2_coef"]
+            record["l2_loss"] = l2_loss.item()
+
+        self.model.zero_grad()
+        loss.backward()
+        # print(e_loss.item(), c_loss.item(), l2_loss.item())
+        # print(predicted_ids)
+        self.optimizer.step()
+        if self.scheduler is not None: 
+            self.scheduler.step()
+        self.model.zero_grad()
+    
     def suta_adapt(self, wavs, record={}):
         """
         Single gradient step on batch of data.

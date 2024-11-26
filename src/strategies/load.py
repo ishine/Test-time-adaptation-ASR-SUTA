@@ -32,6 +32,7 @@ MIX = {
 
 OTHER = {
     "awmc": (f"{SRC_DIR}/awmc.py", "AWMCStrategy"),
+    "litta": (f"{SRC_DIR}/mix/litta/py", "LITTAStrategy"),
 }
 
 EXP = {
@@ -40,6 +41,11 @@ EXP = {
     "v0-ppl": (f"{SRC_DIR}/mix/select.py", "V0PPLStrategy"),
     "v0a": (f"{SRC_DIR}/mix/select.py", "V0AStrategy"),
     "v1": (f"{SRC_DIR}/mix/select.py", "V1Strategy"),
+    "v2": (f"{SRC_DIR}/mix/select.py", "V2Strategy"),
+    
+    "ssuta-rescore": (f"{SRC_DIR}/mix/ssuta.py", "SSUTARescoreStrategy"),
+    "ssuta-LLM": (f"{SRC_DIR}/mix/ssuta.py", "SSUTALLMStrategy"),
+    "psuta-rescore": (f"{SRC_DIR}/mix/psuta.py", "PSUTARescoreStrategy"),
 }
 
 STRATEGY_MAPPING = {

@@ -91,7 +91,7 @@ class LLMStrategy(IStrategy):
         # print(llm_response)
 
         # normalize
-        prefix = "The corrected transcription is: "  # v0
+        prefix = "The corrected transcription is: "
         idx = llm_response.find(prefix)
         try:
             assert idx >= 0

@@ -287,10 +287,10 @@ class V0AStrategy(IStrategy):
     def _parse_res(self, res) -> str:
         llm_response = res.choices[0].message.content
         self._log["LLM"].append(llm_response)
-        # print(res)
+        # print(llm_response)
 
         # normalize
-        prefix = "The corrected transcription is: "  # v0
+        prefix = "The corrected transcription is: "
         idx = llm_response.find(prefix)
         try:
             assert idx >= 0
@@ -338,3 +338,60 @@ class V0AStrategy(IStrategy):
         
     def get_adapt_count(self):
         return 0
+
+
+class V2Strategy(V0Strategy):
+    # LLM or suta-LLM by high confidence ratio
+    def __init__(self, config) -> None:
+        self.config = config
+        self.strategy_config = config["strategy_config"]
+
+        self._log = None
+
+        self.confidence_threshold = 0.99
+        
+        # LLM setup
+        self._init_info()
+
+    def _init_info(self):
+        self.task_name = self.config["task_name"]
+        with open(f"results/benchmark/none/benchmark/{self.task_name}/result/results.pkl", "rb") as f:
+            orig_results = pickle.load(f)
+        with open(f"results/benchmark/LLM/benchmark/{self.task_name}/result/results.pkl", "rb") as f:
+            sys1_results = pickle.load(f)
+        with open(f"results/benchmark/suta-LLM/benchmark/{self.task_name}/result/results.pkl", "rb") as f:
+            sys2_results = pickle.load(f)
+        # sanity check
+        assert sys1_results["basenames"] == sys2_results["basenames"], "Mismatch! Please rerun previous expermients..."
+        self.h1 = [x[1] for x in sys1_results["transcriptions"]]
+        self.h2 = [x[1] for x in sys2_results["transcriptions"]]
+        self.logits = orig_results["logits"]
+
+        # load selected results
+        self.selected = self._load_selected()
+    
+    def _get_high_confidence_ratio(self, logit) -> float:
+        logit = scipy.special.softmax(logit, axis=-1)
+        numer = (logit.max(axis=-1) > self.confidence_threshold).sum()
+        return numer / len(logit)
+
+    def _load_selected(self) -> list[str]:
+        tgt_file = f"results/benchmark/v2/_cache/{self.task_name}/selected.json"
+        if os.path.exists(tgt_file):  # load from cache
+            with open(tgt_file, "r") as f:
+                res = json.load(f)
+            return res
+
+        os.makedirs(os.path.dirname(tgt_file), exist_ok=True)
+        selected = []
+        for idx, (h1, h2) in tqdm(enumerate(zip(self.h1, self.h2)), total=len(self.h1), desc="Selecting"):
+            if h1 == h2:
+                ans = "h0"
+                selected.append(ans)
+                continue
+            ratio = self._get_high_confidence_ratio(self.logits[idx])
+            ans = "h1" if ratio > 0.5 else "h2"
+            selected.append(ans)
+        with open(tgt_file, "w") as f:
+            json.dump(selected, f, indent=4)
+        return selected
